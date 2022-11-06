@@ -23,3 +23,27 @@ typedef struct Message
  * you how to properly print out an unsigned 64 bit integer.
  */
 void printKey(uint64_t key);
+
+
+#define NUM_BYTES_IDENTIFIER 64
+
+Node n; // initialize on creation of node
+Node successor;
+Node predecessor;
+Node finger[NUM_BYTES_IDENTIFIER];
+
+int find_successor(uint32_t id);
+int closest_preceding_node(uint32_t id);
+int create();
+int join(Node *nprime);
+int stabilize();
+int notify(Node *nprime);
+int fix_fingers();
+int check_predecessor();
+
+
+int read_process_node(int sd);     // node fds
+int read_process_input(int sd);    // stdin fd
+
+int lookup(char *key);
+int print_state();
