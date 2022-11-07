@@ -26,14 +26,17 @@ void printKey(uint64_t key);
 
 
 #define NUM_BYTES_IDENTIFIER 64
+#define MAX_SUCCESSORS       32
 
 Node n; // initialize on creation of node
-Node successor;
 Node predecessor;
+Node successors[MAX_SUCCESSORS];
 Node finger[NUM_BYTES_IDENTIFIER];
 
-int find_successor(uint32_t id);
-int closest_preceding_node(uint32_t id);
+Node find_successor(uint32_t id);
+Node closest_preceding_node(uint32_t id);
+Node **get_successor_list(); //TODO unsure if this is the best output format
+
 int create();
 int join(Node *nprime);
 int stabilize();

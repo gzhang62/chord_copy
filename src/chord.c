@@ -6,13 +6,13 @@
 #include "chord.h"
 #include "hash.h"
 
+struct sha1sum_ctx *ctx;
 
 void printKey(uint64_t key) {
 	printf("%" PRIu64, key);
 }
 
 int main(int argc, char *argv[]) {
-
 	return 0;
 }
 
@@ -38,45 +38,53 @@ int read_process_input(int fd) {
 	// Take input, parse into command
 	size_t size = 1;
 	char *input = (char *) malloc(size), *command, *key;
-	ret = getline(&input, &size, fd); // Assuming fd is stdin
-    printf("%d\n",size);
-	// Determine if it's valid command / what command it is
+	int bytes_read = getline(&input, &size, fd); // Assuming fd is stdin
+	
 	if(ret < 0) { // read error
-		perror("Input read error encountered\n"); return -1;
+		perror("Input read error encountered\n"); ret = -1;
 	} else if(size <= 2) {
-	    perror("No command provided\n"); return -1;
+	    perror("No command provided\n"); ret = -1;
 	} else {
     	input[size-2] = '\0'; //remove newline
     	command = strtok_r(input, " ",&key);
-	    //input before space is in command, after is in key
+	    //input before first space is in command, input after is in key
+		//(key is empty string if there is no space)
 	    //printf("COMMAND: [%s], KEY: [%s]", command, key);
-	    
+
+		// Determine if it's valid command / what command it is	    
 		if(strcmp(command, "Lookup") == 0) { // lookup
 			if(strcmp(key,"") == 0) {
-				perror("No key passed into Lookup command"); return -1;
-			} else { // do lookup
-				return lookup(key);
+				perror("No key passed into Lookup command"); ret = -1;
+			} else {
+				ret = lookup(key);
 			}
 		} else if(strcmp(command, "PrintState") == 0) { // print state
 			if(strcmp(key,"") != 0) {
-				perror("Extra parameter passed in to PrintState"); return -1;
+				perror("Extra parameter passed in to PrintState"); ret = -1;
 			} else {
-				return print_state();
+				ret = print_state();
 			}
 		} else { // wrong command
-			perror("Wrong command entered\n"); return -1;
+			perror("Wrong command entered\n"); ret = -1;
 		}
 	}
 	free(input);
-	return -1;
+	return ret;
 }
 
 int lookup(char *key) {
-	perror("Lookup not implemented");
+	printf("Lookup not implemented\n");
+	//TODO Get hash of key
+	//int key_id = ...
+
+	//TODO find successor 
+	//Node result = find_successor(key_id);
+	
+	// Print result
 	return -1;
 }
 
 int print_state() {
-	perror("PrintState not implemented");
+	printf("PrintState not implemented\n");
 	return -1;
 }
