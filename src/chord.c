@@ -36,23 +36,29 @@ int read_process_node(int sd)	{
 int read_process_input(int fd) {
 	int ret;
 	// Take input, parse into command
-	int size = 20;
-	char *input = (char *) malloc(size);
-	ret = getline(input, &size, fd); // Assuming fd is stdin
-	char *command = strtok_r(input, " ");
-	char *key = strtok_r(NULL, ""); // Read rest of line as key (should be NULL if PrintState command)
+	size_t size = 1;
+	char *input = (char *) malloc(size), *command, *key;
+	ret = getline(&input, &size, fd); // Assuming fd is stdin
+    printf("%d\n",size);
 	// Determine if it's valid command / what command it is
 	if(ret < 0) { // read error
 		perror("Input read error encountered\n"); return -1;
+	} else if(size <= 2) {
+	    perror("No command provided\n"); return -1;
 	} else {
+    	input[size-2] = '\0'; //remove newline
+    	command = strtok_r(input, " ",&key);
+	    //input before space is in command, after is in key
+	    //printf("COMMAND: [%s], KEY: [%s]", command, key);
+	    
 		if(strcmp(command, "Lookup") == 0) { // lookup
-			if(key == NULL) {
+			if(strcmp(key,"") == 0) {
 				perror("No key passed into Lookup command"); return -1;
 			} else { // do lookup
 				return lookup(key);
 			}
 		} else if(strcmp(command, "PrintState") == 0) { // print state
-			if(key != NULL) {
+			if(strcmp(key,"") != 0) {
 				perror("Extra parameter passed in to PrintState"); return -1;
 			} else {
 				return print_state();
@@ -61,7 +67,6 @@ int read_process_input(int fd) {
 			perror("Wrong command entered\n"); return -1;
 		}
 	}
-	
 	free(input);
 	return -1;
 }
