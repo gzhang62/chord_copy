@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "chord_arg_parser.h"
 #include "chord.h"
@@ -13,6 +14,7 @@ void printKey(uint64_t key) {
 }
 
 int main(int argc, char *argv[]) {
+	ctx = sha1sum_create(NULL, 0);
 	return 0;
 }
 
@@ -73,18 +75,52 @@ int read_process_input(int fd) {
 }
 
 int lookup(char *key) {
-	printf("Lookup not implemented\n");
-	//TODO Get hash of key
-	//int key_id = ...
-
-	//TODO find successor 
-	//Node result = find_successor(key_id);
+	//printf("Lookup not implemented\n");
+	//Get hash of key
+	uint64_t key_id = get_hash(key); 
+	Node *result = find_successor(key_id);
+	uint64_t node_id = get_node_hash(result);
 	
-	// Print result
-	return -1;
+	// Print results
+	struct in_addr ip_addr;
+	ip_addr.s_addr = result->address;
+
+	printf("< %s",key);
+	printf(" %" PRIu64, node_id); //I don't understand how this works
+	printf(" %s %u\n", inet_ntoa(ip_addr), result->address); 
+
+	free(result);
+	return 0;
+}
+
+uint64_t get_node_hash(Node *n) {
+	// Copy result IP address and port to a buffer for hashing
+	uint8_t buffer[8];
+	memcpy(buffer, 							(uint8_t*)&(result->address),	sizeof(result->address));
+	memcpy(buffer+sizeof(result->address),	(uint8_t*)&(result->port),		sizeof(result->port));
+	return get_hash(buffer);
+}
+
+uint64_t get_hash(char *buffer) {
+	char checksum[20];
+	int ret = sha1sum_finish(ctx, (const uint8_t*)key, strlen(key), checksum);
+	uint64_t head = sha1sum_truncated_head(checksum);
+	sha1sum_reset(ctx);
+	return head;
 }
 
 int print_state() {
 	printf("PrintState not implemented\n");
 	return -1;
+}
+
+/////////////////
+// Actual code //
+/////////////////
+
+Node *find_successor(uint64_t id) {
+	printf("find_successor() not implemented\n");
+	Node *ret = malloc(sizeof(Node));
+	memset(ret,sizeof(Node),0);
+	return ret;
 }
