@@ -23,3 +23,16 @@ typedef struct Message
  * you how to properly print out an unsigned 64 bit integer.
  */
 void printKey(uint64_t key);
+
+// add new client to known 
+int handle_connection(int sd);
+
+// 
+int read_process_input(int sd);
+
+int read_process_node(int sd);
+
+// check if time has elapsed, return 1 if over timeout seconds have passed since last time, 0 otherwise
+int check_time(struct timespec *last_time, int timeout);
+
+void exit_error(char * error_message);
