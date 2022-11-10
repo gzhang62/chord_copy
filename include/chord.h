@@ -24,15 +24,43 @@ typedef struct Message
  */
 void printKey(uint64_t key);
 
+#define NUM_BYTES_IDENTIFIER 64
+#define MAX_SUCCESSORS       32
+
+Node n; // initialize on creation of node
+Node predecessor;
+Node successors[MAX_SUCCESSORS];
+Node finger[NUM_BYTES_IDENTIFIER];
+
+uint64_t get_node_hash(Node *n);
+uint64_t get_hash(char *buffer);
+
+
+Node *find_successor(uint64_t id);
+Node *closest_preceding_node(uint64_t id);
+Node **get_successor_list(); //TODO unsure if this is the best output format
+
+int create();
+int join(Node *nprime);
+int stabilize();
+int notify(Node *nprime);
+int fix_fingers();
+int check_predecessor();
+
+
+int read_process_node(int sd);     // node fds
+int read_process_input(int sd);    // stdin fd
+
+int lookup(char *key);
+int print_state();
+
+// return new server socket
+int setup_server();
 // add new client to known 
 int handle_connection(int sd);
-
-// 
-int read_process_input(int sd);
-
-int read_process_node(int sd);
-
 // check if time has elapsed, return 1 if over timeout seconds have passed since last time, 0 otherwise
 int check_time(struct timespec *last_time, int timeout);
-
+// print error message and shut down node
 void exit_error(char * error_message);
+
+
