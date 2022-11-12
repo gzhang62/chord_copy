@@ -111,7 +111,8 @@ int read_process_node(int sd)	{
 			//TODO
 			break;
 		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST:
-			//TODO
+			uint64_t id = message->find_successor_request->key;
+			find_successor(id);
 			break;
 		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE:
 			//TODO
@@ -122,10 +123,10 @@ int read_process_node(int sd)	{
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE:
 			//TODO
 			break;
-		case CHORD_MESSAGE__MSG_CHECK_PREDECESSORY_REQUEST:
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST:
 			//TODO
 			break;
-		case CHORD_MESSAGE__MSG_CHECK_PREDECESSORY_RESPONSE:
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE:
 			//TODO
 			break;
 		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST:
@@ -138,9 +139,41 @@ int read_process_node(int sd)	{
 			exit_error("The given message didn't have a valid request set\n");
 	}
 
+	free(message);
 	free(buffer);
 	return return_value;
 }
+
+/** 
+ * Does a request for the successor which should store the given node.
+ * (It can't return the result directly!)
+ * @author Adam
+ * @param id the hash which is associated with some node
+ * @return TODO
+*/
+Node *find_successor(uint64_t id) {
+	if(n.key <= id && id <= successors[0].key) {
+		//TODO Send FindSuccessorResponse
+		return NULL;
+	} else {
+		Node *nprime = closest_preceding_neighbor(id);
+		//TODO Send FindSuccessorRequest
+		return NULL;
+	} 
+}
+
+Node *closest_preceding_node(uint64_t id) {
+	for(int i = NUM_BYTES_IDENTIFIER; i >= 0; i--) {
+		if(n.key <= finger[i].key && finger[i].key <= id) {
+			return &finger[i];
+		}
+	}
+	return &n;
+}
+
+///////////////////////////
+// Read/parse user input //
+/////////////////////////// 
 
 /**
  * Read value from standard in and process accordingly.
@@ -198,6 +231,9 @@ int lookup(char *key) {
 	//Get hash of key
 	uint64_t key_id = get_hash(key); 
 	Node *result = find_successor(key_id);
+	// TODO I need to restructure this, because find_successor can't just return
+	// the output directly; the result will arrive in a ChordMessage some time
+	// later and we can't just wait in this function until that happens
 	uint64_t node_id = get_node_hash(result);
 	
 	// Print results
