@@ -87,7 +87,59 @@ int main(int argc, char *argv[]) {
  * @return 0 if success, -1 otherwise
  */
 int read_process_node(int sd)	{
-	return -1;
+	int amount_read, return_value = -1;
+	// Read size of message
+	uint64_t message_size;
+	amount_read = read(sd, &message_size, sizeof(message_size));
+	assert(amount_read == sizeof(message_size));
+	
+	// Read actual message
+	void *buffer = malloc(message_size);
+	amount_read = read(sd, buffer, message_size);
+	assert(amount_read == message_size);
+
+	// Unpack message
+	ChordMessage *message = chordmessage__unpack(NULL, message_size, buffer);
+	if(message == NULL) { error_exit("Error unpacking ChordMessage\n"); }
+
+	// Decide what to do based on message case
+	switch(message->msg_case) {
+		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST:
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE:
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST:
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE:
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST:
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE:
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSORY_REQUEST:
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSORY_RESPONSE:
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST:
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE:
+			//TODO
+			break;
+		default:
+			exit_error("The given message didn't have a valid request set\n");
+	}
+
+	free(buffer);
+	return return_value;
 }
 
 /**
@@ -135,6 +187,12 @@ int read_process_input(int fd) {
 	return ret;
 }
 
+/**
+ * Look up the given key and output the function 
+ * @author Adam
+ * @param key key to look up
+ * @return 
+ */
 int lookup(char *key) {
 	//printf("Lookup not implemented\n");
 	//Get hash of key
