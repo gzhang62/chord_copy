@@ -15,6 +15,9 @@ void printKey(uint64_t key) {
 }
 
 int main(int argc, char *argv[]) {
+	address_table = NULL;
+	forward_table = NULL;
+
 	int num_clients = 0;
 	int clients[MAX_CLIENTS]; // keep track of fds, if fd is present, fds[i] = 1 else fds[i] = 0
 	int server_fd = setup_server();
@@ -107,9 +110,10 @@ int read_process_node(int sd)	{
 		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST: ;
 			//TODO
 			break;
-		/*
+		
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE: ;
-			//TODO
+			Node *nprime = message->find_successor_response->node;
+
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: ;
 			//TODO
@@ -120,7 +124,7 @@ int read_process_node(int sd)	{
 		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE: ;
 			//TODO
 			break;
-		*/
+		
 		default: ;
 			exit_error("The given message didn't have a valid request set\n");
 	}
@@ -153,12 +157,13 @@ Node *find_successor(int sd, uint64_t id) {
 			message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
 			response.node = &n;
 			message.find_successor_response = &response;
-
 			send_message(sd, &message);
 			return NULL;
 		}
 	} else {
 		Node *nprime = closest_preceding_node(id);
+		// Get nprime's socket
+		int nprime_sd = get_socket(*nprime); 
 
 		// Construct and send FindSuccessorRequest
 		ChordMessage message;
@@ -168,9 +173,6 @@ Node *find_successor(int sd, uint64_t id) {
 		message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
 		request.key = id;
 		message.find_successor_request = &request;
-
-		//TODO Get nprime's socket
-		int nprime_sd = -1; 
 		send_message(nprime_sd, &message);
 
 		// Receive FindSuccessorResponse
@@ -195,6 +197,15 @@ Node *find_successor(int sd, uint64_t id) {
 }
 
 /**
+ * Look for the node to forward to, then send it along.
+ * @author Adam
+ */
+int receive_successor() {
+	//TODO
+	return -1;
+}
+
+/**
  * Find the closest preceding node.
  * @author Adam
  * @author Gary 
@@ -211,6 +222,38 @@ Node *closest_preceding_node(uint64_t id) {
 ///////////////
 // Auxiliary //
 ///////////////
+
+/**
+ * Look for an entry with the given name. If it exists, return the entry
+ * and remove it from the table. Otherwise, return -1.
+ * @author Adam
+ * @return -1 if entry not found, otherwise the  
+ */
+int get_and_delete_forward(int sd_from, ChordMessage__MsgCase msg_case) {
+	// Find the entry
+	ForwardTable entry;
+	memset(&entry, 0, sizeof(entry));
+	entry.socket_request.msg_case = msg_case;
+	entry.socket_request.sd = sd_from;
+
+	ForwardTable *result;
+	HASH_FIND(hh, forward_table, &entry.socket_request, sizeof(SocketRequest), result);
+
+	if(result == NULL) {
+		// The entry does not exist in the table
+		return -1;
+	} else {
+		// Result should contain a pointer to a utlist of integers
+		// We want to pop some element added and return it
+		ForwardSockets *pop_elem = result->sds->next; //TODO is this okay?
+		DL_DELETE(result->sds,pop_elem);
+		// Return 
+		int ret = pop_elem->sd;
+		free(pop_elem);
+		return ret;
+	}
+
+}
 
 /**
  * Get the socket from address_table.

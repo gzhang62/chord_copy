@@ -82,16 +82,17 @@ typedef struct _AddressTable {
     UT_hash_handle hh;                /* makes this structure hashable */
 } AddressTable;
 
-// Functions
+// Functions 
 
 uint64_t get_node_hash(Node *nprime);
 uint64_t get_hash(char *buffer);
 
-int add_forward(int sd_to_add);
-int get_and_remove_forward(int sd_from, ChordMessage__MsgCase msg_case);
+int add_forward(int sd_from, ChordMessage__MsgCase msg_case, int sd_to_add);
+int get_and_delete_forward(int sd_from, ChordMessage__MsgCase msg_case);
 
-int get_socket(Node *nprime);
 int add_socket(Node *nprime);
+int get_socket(Node *nprime);
+int delete_socket(Node *nprime);
 
 Node *find_successor(int sd, uint64_t id);
 Node *closest_preceding_node(uint64_t id);
