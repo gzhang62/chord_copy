@@ -87,7 +87,159 @@ int main(int argc, char *argv[]) {
  * @return 0 if success, -1 otherwise
  */
 int read_process_node(int sd)	{
-	int amount_read, return_value = -1;
+	int return_value = -1;
+
+	ChordMessage *message = receive_message(sd);
+	// Decide what to do based on message case
+	switch(message->msg_case) {
+		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST: ;
+			uint64_t id = message->find_successor_request->key;
+			find_successor(sd, id);
+			break;
+		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST: ;
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST: ;
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST: ;
+			//TODO
+			break;
+		/*
+		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE: ;
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: ;
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE: ;
+			//TODO
+			break;
+		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE: ;
+			//TODO
+			break;
+		*/
+		default:
+			exit_error("The given message didn't have a valid request set\n");
+	}
+
+	free(message);
+	return return_value;
+}
+
+/** 
+ * Does a request for the successor which should store the given node.
+ * (It can't return the result directly!)
+ * @author Adam
+ * @param sd the socket for the node which requested successor; -1 if initiated by user
+ * @param id the hash which is associated with some node
+ * @return if sd==-1, return pointer to Node which contains successor; else, return NULL 
+ */
+Node *find_successor(int sd, uint64_t id) {
+	if(n.key <= id && id <= successors[0].key) {
+		// Construct and send FindSuccessorResponse
+		// if sd == -1, then we don't need to send anything
+		// because we're already at the endpoint
+		if(sd == -1) {
+			return &n;
+		} else {	
+			ChordMessage *message = CHORD_MESSAGE__INIT;
+			FindSuccessorResponse *response = FIND_SUCCESSOR_RESPONSE__INIT;
+			message->msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
+			response->node = &n;
+			message->find_successor_response = response;
+
+			send_message(sd, message);
+			return NULL;
+		}
+	} else {
+		Node *nprime = closest_preceding_node(id);
+		// Construct and send FindSuccessorRequest
+		ChordMessage *message = CHORD_MESSAGE__INIT;
+		FindSuccessorRequest *request = FIND_SUCCESSOR_REQUEST__INIT;
+		message->msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
+		request->key = id;
+		message->find_successor_request = request;
+
+		int nprime_sd = -1; //TODO Get nprime's socket
+		send_message(nprime_sd, message);
+
+		// Receive FindSuccessorResponse
+		//TODO this will stop execution of the function until we receive a response from nprime, which is not good
+		ChordMessage *response_message = receive_message(nprime_sd);
+		assert(response_message->msg_case == CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE);	
+
+		if(sd == -1) {
+			// Need to copy over the data before returning
+			Node* ret = malloc(sizeof(Node));
+			memcpy(ret,response_message->find_successor_response->node,sizeof(Node));
+			free(response_message);
+			return ret;
+		} else {
+			// Need to pass the message along to the requesting socket
+			// Technically this is computationally wasteful because it involves unpacking then repacking some data for no reason, but who cares
+			send_message(sd, response_message);
+			free(response_message);
+			return NULL;
+		}
+	} 
+}
+
+/**
+ * Find the closest preceding node.
+ * @author Adam
+ * @author Gary 
+ */
+Node *closest_preceding_node(uint64_t id) {
+	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
+		if(n.key <= finger[i].key && finger[i].key <= id) {
+			return &finger[i];
+		}
+	}
+	return &n;
+}
+
+/**
+ * Given a ChordMessage, it is packed and transmitted
+ * over TCP to given socket descriptor (prefixed by
+ * the length of the packed ChordMessage).
+ * @author Adam
+ * @param sd socket to which message is sent
+ * @param message pointer to message to send
+ * @return -1 if failure, 0 if success
+ */
+int send_message(int sd, ChordMessage *message) {
+	int amount_sent;
+
+	// Pack and send message
+	int64_t len = chord_message__get_packed_size(message);
+	void *buffer = malloc(len);
+	chord_message__pack(message, buffer);
+
+	// First send length, then send message
+	amount_sent = send(sd, &len, sizeof(len), 0);
+	assert(amount_sent == sizeof(len));
+
+	amount_sent = send(sd, buffer, len, 0);
+	assert(amount_sent == len);
+
+	free(buffer);
+	return 0;
+}
+
+/**
+ * Given a socket descriptor, allocate a buffer of appropriate length,
+ * get data, and unpack into a ChordMessage which is returned.
+ * @author Adam
+ * @param sd socket from which to read 
+ * @return ChordMessage which was received from sd
+ */
+ChordMessage *receive_message(int sd) {
+	int amount_read;
+
 	// Read size of message
 	uint64_t message_size;
 	amount_read = read(sd, &message_size, sizeof(message_size));
@@ -100,118 +252,9 @@ int read_process_node(int sd)	{
 
 	// Unpack message
 	ChordMessage *message = chord_message__unpack(NULL, message_size, buffer);
-	if(message == NULL) { error_exit("Error unpacking ChordMessage\n"); }
+	if(message == NULL) { exit_error("Error unpacking ChordMessage\n"); }
 
-	// Decide what to do based on message case
-	switch(message->msg_case) {
-		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST:
-			//TODO
-			break;
-		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE:
-			//TODO
-			break;
-		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST:
-			uint64_t id = message->find_successor_request->key;
-			find_successor(sd, id);
-			break;
-		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE:
-			//TODO
-			break;
-		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST:
-			//TODO
-			break;
-		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE:
-			//TODO
-			break;
-		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST:
-			//TODO
-			break;
-		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE:
-			//TODO
-			break;
-		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST:
-			//TODO
-			break;
-		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE:
-			//TODO
-			break;
-		default:
-			exit_error("The given message didn't have a valid request set\n");
-	}
-
-	free(message);
-	free(buffer);
-	return return_value;
-}
-
-/** 
- * Does a request for the successor which should store the given node.
- * (It can't return the result directly!)
- * @author Adam
- * @param id the hash which is associated with some node
- * @return -1 if failure, 0 if success 
-*/
-int find_successor(int sd, uint64_t id) {
-	if(n.key <= id && id <= successors[0].key) {
-		// Construct and send FindSuccessorResponse
-		ChordMessage *message = CHORD_MESSAGE__INIT;
-		FindSuccessorResponse *response = FIND_SUCCESSOR_RESPONSE__INIT;
-
-		message->msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
-		response->node = n;
-		message->find_successor_response = response;
-
-		return send_message(sd, message);
-	} else {
-		Node nprime = closest_preceding_neighbor(id);
-		// Construct and send FindSuccessorRequest
-		ChordMessage *message = CHORD_MESSAGE__INIT;
-		FindSuccessorRequest *request = FIND_SUCCESSOR_REQUEST_INIT;
-
-		message->msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
-		request->key = id;
-		message->find_successor_request = request;
-
-		int nprime_sd = -1; //TODO Get nprime's socket
-		return send_message(nprime_sd, message);
-	} 
-}
-
-Node closest_preceding_node(uint64_t id) {
-	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
-		if(n.key <= finger[i].key && finger[i].key <= id) {
-			return finger[i];
-		}
-	}
-	return n;
-}
-
-/**
- * Given a ChordMessage, it is packed and transmitted
- * over TCP to given socket descriptor (prefixed by
- * the length of the packed ChordMessage).
- * @author Adam
- * @param sd socket to which message is sent
- * @param message pointer to message to send
- * @return -1 if failure, 0 if success
-*/
-int send_message(int sd, ChordMessage *message) {
-	int amount_sent;
-
-	// Pack and send message
-	int64_t len = chord_message__get_packed_size(message);
-	void *buffer = malloc(len);
-	chord_message__pack(message, buffer);
-
-	// First send length, then send message
-	amount_sent = send(sd, &len, sizeof(len), NULL);
-	assert(amount_read == sizeof(len));
-
-	amount_sent = send(sd, buffer, len, NULL);
-	assert(amount_read == len);
-
-	free(buffer);
-	return 0;
+	return message;
 }
 
 ///////////////////////////
@@ -224,13 +267,14 @@ int send_message(int sd, ChordMessage *message) {
  * @param fd file descriptor for standard in
  * @return 0 if success, -1 otherwise
  */
-int read_process_input(int fd) {
+int read_process_input(FILE *fd) {
 	int ret;
 	// Take input, parse into command
 	size_t size = 1;
 	char *input = (char *) malloc(size), *command, *key;
 	int bytes_read = getline(&input, &size, fd); // Assuming fd is stdin
-	
+	UNUSED(bytes_read);
+
 	if(ret < 0) { // read error
 		perror("Input read error encountered\n"); ret = -1;
 	} else if(size <= 2) {
@@ -271,9 +315,9 @@ int read_process_input(int fd) {
  */
 int lookup(char *key) {
 	//printf("Lookup not implemented\n");
-	//Get hash of key
+	// Get hash of key
 	uint64_t key_id = get_hash(key); 
-	Node *result = find_successor(key_id);
+	Node *result = find_successor(-1, key_id);
 	// TODO I need to restructure this, because find_successor can't just return
 	// the output directly; the result will arrive in a ChordMessage some time
 	// later and we can't just wait in this function until that happens
@@ -289,6 +333,18 @@ int lookup(char *key) {
 
 	free(result);
 	return 0; 
+}
+
+//TODO
+uint64_t get_node_hash(Node *n) {
+	UNUSED(n);
+	return -1;
+}
+
+//TODO
+uint64_t get_hash(char *buffer) {
+	UNUSED(buffer);
+	return -1;
 }
 
 /**
