@@ -2,7 +2,6 @@
 
 #include "chord.pb-c.h"
 #include "uthash.h"
-#include "utlist.h"
 
 // Useful Macros
 
@@ -61,17 +60,16 @@ typedef struct _SocketRequest {
     ChordMessage__MsgCase msg_case;
 } SocketRequest;
 
-// Value in hash map (utlist)
-typedef struct _ForwardSockets {
-    int sd;
-    struct element *prev; /* needed for a doubly-linked list only */
-    struct element *next; /* needed for singly- or doubly-linked lists */
-} ForwardSockets;
+// Value in hash map
+typedef struct _SocketList {
+    int len;
+    int sds[MAX_CLIENTS];
+} SocketList;
 
 // Mapping struct (uthash)
 typedef struct _ForwardTable {
     SocketRequest socket_request;     /* key */
-    ForwardSockets *sds;              /* value */
+    SocketList *sds;                  /* value */
     UT_hash_handle hh;                /* makes this structure hashable */
 } ForwardTable;
 
@@ -95,6 +93,8 @@ int get_socket(Node *nprime);
 int delete_socket(Node *nprime);
 
 Node *find_successor(int sd, uint64_t id);
+Node *receive_successor(int sd, ChordMessage *message);
+
 Node *closest_preceding_node(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
 

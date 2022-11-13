@@ -112,8 +112,7 @@ int read_process_node(int sd)	{
 			break;
 		
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE: ;
-			Node *nprime = message->find_successor_response->node;
-
+			receive_successor(sd, message);
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: ;
 			//TODO
@@ -129,7 +128,7 @@ int read_process_node(int sd)	{
 			exit_error("The given message didn't have a valid request set\n");
 	}
 
-	free(message);
+	chord_message__free_unpacked(message,NULL);
 	return return_value;
 }
 
@@ -139,7 +138,7 @@ int read_process_node(int sd)	{
  * @author Adam
  * @param sd the socket for the node which requested successor; -1 if initiated by user
  * @param id the hash which is associated with some node
- * @return if sd ==-1, return pointer to Node which contains successor; else, return NULL 
+ * @return TODO
  */
 Node *find_successor(int sd, uint64_t id) {
 	if(n.key < id && id <= successors[0].key) {
@@ -175,34 +174,39 @@ Node *find_successor(int sd, uint64_t id) {
 		message.find_successor_request = &request;
 		send_message(nprime_sd, &message);
 
-		// Receive FindSuccessorResponse
-		//TODO this will stop execution of the function until we receive a response from nprime, which is not good
-		ChordMessage *response_message = receive_message(nprime_sd);
-		assert(response_message->msg_case == CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE);	
+		// Add an entry to the forward table to remind us later
+		add_forward(nprime_sd, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, sd);
 
-		if(sd == -1) {
-			// Need to copy over the data before returning
-			Node* ret = malloc(sizeof(Node));
-			memcpy(ret,response_message->find_successor_response->node,sizeof(Node));
-			free(response_message);
-			return ret;
-		} else {
-			// Need to pass the message along to the requesting socket
-			// Technically this is computationally wasteful because it involves unpacking then repacking some data for no reason, but who cares
-			send_message(sd, response_message);
-			free(response_message);
-			return NULL;
-		}
+		return NULL;
 	} 
 }
 
 /**
- * Look for the node to forward to, then send it along.
+ * Look for the node to forward to in the hash table, 
+ * then send it along if it's not -1; if it is -1, 
+ * then we are the termination point and we want to 
+ * use the value.
+ * If this 
  * @author Adam
+ * @return NULL if forwarded, otherwise, the successor
  */
-int receive_successor() {
-	//TODO
-	return -1;
+Node *receive_successor(int sd, ChordMessage *message) {
+	Node *nprime = message->find_successor_response->node;
+	//Get the appropriate socket to forward to 
+	int sd_to = get_and_delete_forward(sd, CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE);
+	
+	if(sd_to == -1) {
+		// We aren't forwarding this one; this is the source of the request		
+		// Need to copy over the data before returning
+		Node* ret = malloc(sizeof(Node));
+		memcpy(ret,response_message->find_successor_response->node,sizeof(Node));
+		return ret; // the message is free'd in read_process_node
+	} else {
+		// Pass along ChordMessage
+		send_message(sd_to,message);
+		return NULL;
+	}
+
 }
 
 /**
@@ -227,7 +231,7 @@ Node *closest_preceding_node(uint64_t id) {
  * Look for an entry with the given name. If it exists, return the entry
  * and remove it from the table. Otherwise, return -1.
  * @author Adam
- * @return -1 if entry not found, otherwise the  
+ * @return -1 if entry not found, otherwise some associated node from the entry
  */
 int get_and_delete_forward(int sd_from, ChordMessage__MsgCase msg_case) {
 	// Find the entry
@@ -243,16 +247,18 @@ int get_and_delete_forward(int sd_from, ChordMessage__MsgCase msg_case) {
 		// The entry does not exist in the table
 		return -1;
 	} else {
-		// Result should contain a pointer to a utlist of integers
+		// Result should contain a pointer to a struct containing an array
 		// We want to pop some element added and return it
-		ForwardSockets *pop_elem = result->sds->next; //TODO is this okay?
-		DL_DELETE(result->sds,pop_elem);
-		// Return 
-		int ret = pop_elem->sd;
-		free(pop_elem);
-		return ret;
+		int *sd_list = result->sds->sds;
+		int last_index = result->sds->len-1;
+		if(last_index >= 0) {
+			result->sds->len--;
+			return sd_list[last_index];
+		} else {
+			// There are zero entries in the 
+			return -1;
+		}
 	}
-
 }
 
 /**
@@ -265,8 +271,8 @@ int get_socket(Node *nprime) {
 	AddressTable entry;
 	memset(&entry, 0, sizeof(entry));
 	entry.address.sin_family = AF_INET;
-	entry.address.sin_addr.s_addr = ntohl(nprime->address);
-	entry.address.sin_port = (u_short) ntohl(nprime->port); // NOTE: copying 32 bit into 16 bit
+	entry.address.sin_addr.s_addr = htonl(nprime->address);
+	entry.address.sin_port = (u_short) htonl(nprime->port); // NOTE: copying 32 bit into 16 bit
 
 	// Find in global variable `address_table`
 	AddressTable *result;
@@ -326,6 +332,7 @@ ChordMessage *receive_message(int sd) {
 	ChordMessage *message = chord_message__unpack(NULL, message_size, buffer);
 	if(message == NULL) { exit_error("Error unpacking ChordMessage\n"); }
 
+	free(buffer);
 	return message;
 }
 
