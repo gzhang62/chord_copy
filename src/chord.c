@@ -8,7 +8,11 @@
 #include "chord.h"
 #include "hash.h"
 
-#define MAX_CLIENTS 1024
+Node n; // initialize on creation of node
+Node predecessor;
+Node successors[MAX_SUCCESSORS];
+Node finger[NUM_BYTES_IDENTIFIER];
+
 struct sha1sum_ctx *ctx;
 
 void printKey(uint64_t key) {
@@ -122,7 +126,7 @@ int read_process_node(int sd)	{
 			//TODO
 			break;
 		*/
-		default:
+		default: ;
 			exit_error("The given message didn't have a valid request set\n");
 	}
 
@@ -139,33 +143,39 @@ int read_process_node(int sd)	{
  * @return if sd==-1, return pointer to Node which contains successor; else, return NULL 
  */
 Node *find_successor(int sd, uint64_t id) {
-	if(n.key <= id && id <= successors[0].key) {
-		// Construct and send FindSuccessorResponse
+	if(n.key < id && id <= successors[0].key) {
 		// if sd == -1, then we don't need to send anything
 		// because we're already at the endpoint
 		if(sd == -1) {
 			return &n;
 		} else {	
-			ChordMessage *message = CHORD_MESSAGE__INIT;
-			FindSuccessorResponse *response = FIND_SUCCESSOR_RESPONSE__INIT;
-			message->msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
-			response->node = &n;
-			message->find_successor_response = response;
+			// Construct and send FindSuccessorResponse
+			ChordMessage message;
+			FindSuccessorResponse response; 
+			// Not using the macros because they cause some warnings
+			chord_message__init(&message);
+			find_successor_response__init(&response);
+			message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
+			response.node = &n;
+			message.find_successor_response = &response;
 
-			send_message(sd, message);
+			send_message(sd, &message);
 			return NULL;
 		}
 	} else {
 		Node *nprime = closest_preceding_node(id);
+
 		// Construct and send FindSuccessorRequest
-		ChordMessage *message = CHORD_MESSAGE__INIT;
-		FindSuccessorRequest *request = FIND_SUCCESSOR_REQUEST__INIT;
-		message->msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
-		request->key = id;
-		message->find_successor_request = request;
+		ChordMessage message;
+		FindSuccessorRequest request;
+		chord_message__init(&message);
+		find_successor_request__init(&request);
+		message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
+		request.key = id;
+		message.find_successor_request = &request;
 
 		int nprime_sd = -1; //TODO Get nprime's socket
-		send_message(nprime_sd, message);
+		send_message(nprime_sd, &message);
 
 		// Receive FindSuccessorResponse
 		//TODO this will stop execution of the function until we receive a response from nprime, which is not good
