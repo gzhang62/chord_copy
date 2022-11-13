@@ -12,11 +12,13 @@
 #define MAX_CLIENTS 1024
 struct sha1sum_ctx *ctx;
 
-
 /* Timestamps for periodic update variables*/
 struct timespec last_check_predecessor;
 struct timespec last_fix_fingers;
 struct timespec last_stabilize;
+
+// Num successors
+uint8_t num_successors;
 
 void printKey(uint64_t key) {
 	printf("%" PRIu64, key);
@@ -35,6 +37,7 @@ int main(int argc, char *argv[]) {
 	// uint8_t num_successors = chord_args.num_successors;
 	struct sockaddr_in my_address = chord_args.my_address;
 	// struct sockaddr_in join_address = chord_args.join_address;
+	num_successors = chord_args.num_successors;
 	/* timeout values in seconds */
 	int cpp = chord_args.check_predecessor_period;
 	int ffp = chord_args.fix_fingers_period;
@@ -241,67 +244,41 @@ int handle_connection(int sd) {
 	return client_fd;
 }
 
-Node *closest_preceding_node(uint64_t id) {
-	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
-		uint32_t finger_key = finger[i].key;
-		if(finger_key > n.key && finger_key < id) {
-			return &finger[i];
+/**
+ * stabilize as written in chord article
+ * @author Gary
+ * @return 1, could be made void
+ */
+int stabilize() {
+	Node *immediate_successor = successors[0];
+	Node *x = closest_preceding_node(immediate_successor->key);
+	if(x->key > n.key && x->key < immediate_successor->key) {
+		Node **successor_list = get_successor_list();
+		for(int i = 1; i < num_successors - 1; i++) {
+			successors[i] = successor_list[i-1];
 		}
-	}
-
-	return &n;
+		successors[0] = x;
+ 	}
+	notify(immediate_successor);
+	return 1;
 }
 
-Node *find_successor(uint64_t id) {
-	// might have to loop through all successors
-	Node *immediate_sucessor = &successors[0];
-	if(immediate_sucessor->key >= id && id > n.key) {
-		return immediate_sucessor;
-	} else {
-		Node *n_prime = closest_preceding_node(id);
-		FindSuccessorRequest fsreq = FIND_SUCCESSOR_REQUEST__INIT;
-		FindSuccessorResponse *fsresp;
-		void *send_buf;
-		void *recv_buf;
-		unsigned send_len;
-		unsigned recv_len;
-		bool message_received = false;
-		int new_sock;
-
-		// create new temp socket
-		if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
-			exit_error("Failed to create socket");
-		}	
-
-		// set request id
-		fsreq.key = id;
-		// get packed len
-		send_len = find_successor_request__get_packed_size(&fsreq);
-		// allocate a buffer and pack message
-		send_buf = malloc(send_len);
-		find_successor_request__pack(&fsreq, send_buf);
-
-		// send message to n_prime's address
-		if(connect(new_sock, (struct sockaddr *) n_prime->address, sizeof(n_prime->address))) {
-			exit_error("Failed to connect to n_prime in find successor");
-		}
-		if(send(new_sock, send_buf, send_len, 0)) {
-			exit_error("Failed to send find successor request");
-		}
-
-		recv_len = find_successor_response__get_packed_size(&fsresp); // unsure if this is how to do it
-		recv_buf = malloc(recv_len);
-		if(recv(new_sock, recv_buf, recv_len, MSG_PEEK)) {
-			exit_error("Failed to receive find successor response");
-		}
-		fsresp = find_successor_response__unpack(NULL, recv_len, recv_buf);
-		
-		close(new_sock);
-		free(send_buf);
-		return fsresp->node;
+/**
+ * fix fingers as written in chord article
+ * @author Gary
+ * @return 1, could be made void
+ */
+int fix_fingers() {
+	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
+		finger[i] = find_successor(n.key + (pow(2, i) - 1));
 	}
+	return 1;
 }
 
+/**
+ * Checks all periodic timeouts
+ * @author Gary
+ */
 void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
 	if(check_time(&last_stabilize, sp)) {

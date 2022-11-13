@@ -29,8 +29,8 @@ void printKey(uint64_t key);
 
 Node n; // initialize on creation of node
 Node predecessor;
-Node successors[MAX_SUCCESSORS];
-Node finger[NUM_BYTES_IDENTIFIER];
+Node *successors[MAX_SUCCESSORS];
+Node *finger[NUM_BYTES_IDENTIFIER];
 
 uint64_t get_node_hash(Node *n);
 uint64_t get_hash(char *buffer);
