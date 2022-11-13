@@ -36,8 +36,8 @@ uint64_t get_node_hash(Node *n);
 uint64_t get_hash(char *buffer);
 
 
-Node *find_successor(uint64_t id);
-Node *closest_preceding_node(uint64_t id);
+int find_successor(int sd, uint64_t id);
+Node closest_preceding_node(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
 int create();

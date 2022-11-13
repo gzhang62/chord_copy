@@ -99,7 +99,7 @@ int read_process_node(int sd)	{
 	assert(amount_read == message_size);
 
 	// Unpack message
-	ChordMessage *message = chordmessage__unpack(NULL, message_size, buffer);
+	ChordMessage *message = chord_message__unpack(NULL, message_size, buffer);
 	if(message == NULL) { error_exit("Error unpacking ChordMessage\n"); }
 
 	// Decide what to do based on message case
@@ -112,7 +112,7 @@ int read_process_node(int sd)	{
 			break;
 		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST:
 			uint64_t id = message->find_successor_request->key;
-			find_successor(id);
+			find_successor(sd, id);
 			break;
 		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE:
 			//TODO
@@ -149,26 +149,68 @@ int read_process_node(int sd)	{
  * (It can't return the result directly!)
  * @author Adam
  * @param id the hash which is associated with some node
- * @return TODO
+ * @return -1 if failure, 0 if success 
 */
-Node *find_successor(uint64_t id) {
+int find_successor(int sd, uint64_t id) {
 	if(n.key <= id && id <= successors[0].key) {
-		//TODO Send FindSuccessorResponse
-		return NULL;
+		// Construct and send FindSuccessorResponse
+		ChordMessage *message = CHORD_MESSAGE__INIT;
+		FindSuccessorResponse *response = FIND_SUCCESSOR_RESPONSE__INIT;
+
+		message->msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
+		response->node = n;
+		message->find_successor_response = response;
+
+		return send_message(sd, message);
 	} else {
-		Node *nprime = closest_preceding_neighbor(id);
-		//TODO Send FindSuccessorRequest
-		return NULL;
+		Node nprime = closest_preceding_neighbor(id);
+		// Construct and send FindSuccessorRequest
+		ChordMessage *message = CHORD_MESSAGE__INIT;
+		FindSuccessorRequest *request = FIND_SUCCESSOR_REQUEST_INIT;
+
+		message->msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
+		request->key = id;
+		message->find_successor_request = request;
+
+		return send_message(nprime.key, message);
 	} 
 }
 
-Node *closest_preceding_node(uint64_t id) {
+Node closest_preceding_node(uint64_t id) {
 	for(int i = NUM_BYTES_IDENTIFIER; i >= 0; i--) {
 		if(n.key <= finger[i].key && finger[i].key <= id) {
-			return &finger[i];
+			return finger[i];
 		}
 	}
-	return &n;
+	return n;
+}
+
+/**
+ * Given a ChordMessage, it is packed and transmitted
+ * over TCP to given socket descriptor (prefixed by
+ * the length of the packed ChordMessage).
+ * @author Adam
+ * @param sd socket to which message is sent
+ * @param message pointer to message to send
+ * @return -1 if failure, 0 if success
+*/
+int send_message(int sd, ChordMessage *message) {
+	int amount_sent;
+
+	// Pack and send message
+	int64_t len = chord_message__get_packed_size(message);
+	void *buffer = malloc(len);
+	chord_message__pack(message, buffer);
+
+	// First send length, then send message
+	amount_sent = send(sd, &len, sizeof(len), NULL);
+	assert(amount_read == sizeof(len));
+
+	amount_sent = send(sd, buffer, len, NULL);
+	assert(amount_read == len);
+
+	free(buffer);
+	return 0;
 }
 
 ///////////////////////////
