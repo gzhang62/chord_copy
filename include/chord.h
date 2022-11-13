@@ -12,6 +12,16 @@
 #define MAX_SUCCESSORS       32
 #define MAX_CLIENTS          1024
 
+// Variables
+
+Node n; // initialize on creation of node
+Node predecessor;
+Node successors[MAX_SUCCESSORS];
+Node finger[NUM_BYTES_IDENTIFIER];
+
+ForwardTable *address_table;
+AddressTable *forward_table;
+
 // Provided
 
 // Length of a Chord Node or item key
@@ -61,18 +71,27 @@ typedef struct _ForwardSockets {
 // Mapping struct (uthash)
 typedef struct _ForwardTable {
     SocketRequest socket_request;     /* key */
-    int forward_sd[];                 /* value */
+    ForwardSockets *sds;              /* value */
     UT_hash_handle hh;                /* makes this structure hashable */
 } ForwardTable;
 
+// Table mapping socket address to socket
+typedef struct _AddressTable {
+    struct sockaddr_in address;       /* key */
+    int sd;                           /* value */
+    UT_hash_handle hh;                /* makes this structure hashable */
+} AddressTable;
+
 // Functions
 
-uint64_t get_node_hash(Node *n);
+uint64_t get_node_hash(Node *nprime);
 uint64_t get_hash(char *buffer);
 
+int add_forward(int sd_to_add);
+int get_and_remove_forward(int sd_from, ChordMessage__MsgCase msg_case);
 
-int add_forward(ForwardTable *table, int sd_to_add);
-int get_and_remove_forward(ForwardTable *table, int sd_from, ChordMessage__MsgCase msg_case);
+int get_socket(Node *nprime);
+int add_socket(Node *nprime);
 
 Node *find_successor(int sd, uint64_t id);
 Node *closest_preceding_node(uint64_t id);

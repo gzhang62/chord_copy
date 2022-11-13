@@ -8,11 +8,6 @@
 #include "chord.h"
 #include "hash.h"
 
-Node n; // initialize on creation of node
-Node predecessor;
-Node successors[MAX_SUCCESSORS];
-Node finger[NUM_BYTES_IDENTIFIER];
-
 struct sha1sum_ctx *ctx;
 
 void printKey(uint64_t key) {
@@ -140,7 +135,7 @@ int read_process_node(int sd)	{
  * @author Adam
  * @param sd the socket for the node which requested successor; -1 if initiated by user
  * @param id the hash which is associated with some node
- * @return if sd==-1, return pointer to Node which contains successor; else, return NULL 
+ * @return if sd ==-1, return pointer to Node which contains successor; else, return NULL 
  */
 Node *find_successor(int sd, uint64_t id) {
 	if(n.key < id && id <= successors[0].key) {
@@ -174,7 +169,8 @@ Node *find_successor(int sd, uint64_t id) {
 		request.key = id;
 		message.find_successor_request = &request;
 
-		int nprime_sd = -1; //TODO Get nprime's socket
+		//TODO Get nprime's socket
+		int nprime_sd = -1; 
 		send_message(nprime_sd, &message);
 
 		// Receive FindSuccessorResponse
@@ -210,6 +206,29 @@ Node *closest_preceding_node(uint64_t id) {
 		}
 	}
 	return &n;
+}
+
+///////////////
+// Auxiliary //
+///////////////
+
+/**
+ * Get the socket from address_table.
+ * @author Adam
+ * @return -1 if not found in address_table, else the socket from table.
+ */
+int get_socket(Node *nprime) {
+	// Set up key (following the uthash guide)
+	AddressTable entry;
+	memset(&entry, 0, sizeof(entry));
+	entry.address.sin_family = AF_INET;
+	entry.address.sin_addr.s_addr = ntohl(nprime->address);
+	entry.address.sin_port = (u_short) ntohl(nprime->port); // NOTE: copying 32 bit into 16 bit
+
+	// Find in global variable `address_table`
+	AddressTable *result;
+	HASH_FIND(hh, address_table, &entry.address, sizeof(struct sockaddr_in), result);
+	return ((result == NULL) ? -1 : result->sd);
 }
 
 /**
