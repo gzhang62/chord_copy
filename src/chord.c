@@ -12,10 +12,7 @@
 #define MAX_CLIENTS 1024
 struct sha1sum_ctx *ctx;
 
-/* Timestamps for periodic update variables*/
-struct timespec last_check_predecessor;
-struct timespec last_fix_fingers;
-struct timespec last_stabilize;
+
 
 // Num successors
 uint8_t num_successors;
@@ -473,7 +470,7 @@ int fix_fingers() {
 }
 
 int check_predecessor() {
-
+	
 }
 
 /**
@@ -527,4 +524,28 @@ int add_socket(Node *n_prime) {
 	a->sd = new_sock;
 	// add mapping to global hash map
 	HASH_ADD(hh, address_table, address, sizeof(struct sockaddr_in), a);
+	return 0;
+}
+
+int delete_socket(Node *n_prime) {
+	struct sockaddr_in addr;
+	AddressTable *ret;
+	// set addr
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = (unsigned short) htonl(n_prime->port);
+	addr.sin_addr.s_addr = n_prime->address;
+	HASH_FIND_PTR(address_table, &addr, ret);
+	if(ret) {
+		// address was found remove it
+		HASH_DEL(address_table, ret);
+		return 0;
+	} else {
+		// address was not found return -1
+		return -1;
+	}
+}
+
+int add_forward(int sd_from, ChordMessage__MsgCase msg_case, int sd_to) {
+	ForwardTable new_entry;
 }

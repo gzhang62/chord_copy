@@ -42,7 +42,6 @@ Node *finger[NUM_BYTES_IDENTIFIER];
 uint64_t get_node_hash(Node *n);
 uint64_t get_hash(char *buffer);
 
-
 Node *find_successor(int sd, uint64_t id);
 Node *closest_preceding_node(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
@@ -74,4 +73,10 @@ void exit_error(char * error_message);
 // check periodic timers
 void check_periodic();
 
+/* Timestamps for periodic update variables*/
+struct timespec last_check_predecessor;
+struct timespec last_fix_fingers;
+struct timespec last_stabilize;
 
+int add_socket(Node *n_prime);
+int delete_socket(Node *n_prime)
