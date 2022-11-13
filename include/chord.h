@@ -2,6 +2,8 @@
 
 #include "chord.pb-c.h"
 
+#define UNUSED(x) (void)(x)
+
 // Length of a Chord Node or item key
 const uint8_t KEY_LEN = 8;
 
@@ -24,6 +26,11 @@ typedef struct Message
  */
 void printKey(uint64_t key);
 
+typedef struct _NodeSocket {
+    Node node;
+    int socket;
+} NodeSocket;
+
 #define NUM_BYTES_IDENTIFIER 64
 #define MAX_SUCCESSORS       32
 
@@ -36,7 +43,7 @@ uint64_t get_node_hash(Node *n);
 uint64_t get_hash(char *buffer);
 
 
-Node *find_successor(uint64_t id);
+Node *find_successor(int sd, uint64_t id);
 Node *closest_preceding_node(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
@@ -49,7 +56,9 @@ int check_predecessor();
 
 
 int read_process_node(int sd);     // node fds
-int read_process_input(int sd);    // stdin fd
+int read_process_input(FILE *fd);    // stdin fd
+int send_message(int sd, ChordMessage *message);
+ChordMessage *receive_message(int sd);
 
 int lookup(char *key);
 int print_state();

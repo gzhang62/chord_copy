@@ -673,7 +673,7 @@ static const ProtobufCFieldDescriptor find_successor_request__field_descriptors[
     "key",
     1,
     PROTOBUF_C_LABEL_REQUIRED,
-    PROTOBUF_C_TYPE_FIXED32,
+    PROTOBUF_C_TYPE_FIXED64,
     0,   /* quantifier_offset */
     offsetof(FindSuccessorRequest, key),
     NULL,
@@ -979,24 +979,24 @@ static const ProtobufCFieldDescriptor chord_message__field_descriptors[11] =
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "check_predecessory_request",
+    "check_predecessor_request",
     8,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_MESSAGE,
     offsetof(ChordMessage, msg_case),
-    offsetof(ChordMessage, check_predecessory_request),
+    offsetof(ChordMessage, check_predecessor_request),
     &check_predecessor_request__descriptor,
     NULL,
     0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
-    "check_predecessory_response",
+    "check_predecessor_response",
     9,
     PROTOBUF_C_LABEL_OPTIONAL,
     PROTOBUF_C_TYPE_MESSAGE,
     offsetof(ChordMessage, msg_case),
-    offsetof(ChordMessage, check_predecessory_response),
+    offsetof(ChordMessage, check_predecessor_response),
     &check_predecessor_response__descriptor,
     NULL,
     0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
@@ -1028,8 +1028,8 @@ static const ProtobufCFieldDescriptor chord_message__field_descriptors[11] =
   },
 };
 static const unsigned chord_message__field_indices_by_name[] = {
-  7,   /* field[7] = check_predecessory_request */
-  8,   /* field[8] = check_predecessory_response */
+  7,   /* field[7] = check_predecessor_request */
+  8,   /* field[8] = check_predecessor_response */
   3,   /* field[3] = find_successor_request */
   4,   /* field[4] = find_successor_response */
   5,   /* field[5] = get_predecessor_request */
