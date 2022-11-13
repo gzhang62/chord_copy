@@ -172,12 +172,13 @@ int find_successor(int sd, uint64_t id) {
 		request->key = id;
 		message->find_successor_request = request;
 
-		return send_message(nprime.key, message);
+		int nprime_sd = -1; //TODO Get nprime's socket
+		return send_message(nprime_sd, message);
 	} 
 }
 
 Node closest_preceding_node(uint64_t id) {
-	for(int i = NUM_BYTES_IDENTIFIER; i >= 0; i--) {
+	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
 		if(n.key <= finger[i].key && finger[i].key <= id) {
 			return finger[i];
 		}
