@@ -62,5 +62,7 @@ int handle_connection(int sd);
 int check_time(struct timespec *last_time, int timeout);
 // print error message and shut down node
 void exit_error(char * error_message);
+// check periodic timers
+void check_periodic();
 
 
