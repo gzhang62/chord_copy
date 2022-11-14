@@ -112,7 +112,10 @@ int read_process_node(int sd)	{
 			break;
 		
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE: ;
-			receive_successor(sd, message);
+			Node *successor = receive_successor(sd, message);
+			if(successor != NULL) {
+
+			}
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: ;
 			//TODO
@@ -134,11 +137,12 @@ int read_process_node(int sd)	{
 
 /** 
  * Does a request for the successor which should store the given node.
- * (It can't return the result directly!)
+ * (The result will be gotten back at some point and processed with receive_successor.)
  * @author Adam
  * @param sd the socket for the node which requested successor; -1 if initiated by user
  * @param id the hash which is associated with some node
- * @return TODO
+ * @return return its own node if no requests are necessary (we requested from this node);
+ * otherwise, return NULL (and do a request/response)
  */
 Node *find_successor(int sd, uint64_t id) {
 	if(n.key < id && id <= successors[0].key) {
@@ -176,7 +180,6 @@ Node *find_successor(int sd, uint64_t id) {
 
 		// Add an entry to the forward table to remind us later
 		add_forward(nprime_sd, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, sd);
-
 		return NULL;
 	} 
 }
@@ -199,14 +202,13 @@ Node *receive_successor(int sd, ChordMessage *message) {
 		// We aren't forwarding this one; this is the source of the request		
 		// Need to copy over the data before returning
 		Node* ret = malloc(sizeof(Node));
-		memcpy(ret,response_message->find_successor_response->node,sizeof(Node));
+		memcpy(ret,message->find_successor_response->node,sizeof(Node));
 		return ret; // the message is free'd in read_process_node
 	} else {
 		// Pass along ChordMessage
 		send_message(sd_to,message);
 		return NULL;
 	}
-
 }
 
 /**
@@ -234,12 +236,13 @@ Node *closest_preceding_node(uint64_t id) {
  * @return -1 if entry not found, otherwise some associated node from the entry
  */
 int get_and_delete_forward(int sd_from, ChordMessage__MsgCase msg_case) {
-	// Find the entry
+	// Set up the entry to find
 	ForwardTable entry;
 	memset(&entry, 0, sizeof(entry));
 	entry.socket_request.msg_case = msg_case;
 	entry.socket_request.sd = sd_from;
 
+	// Find the entry, store in result
 	ForwardTable *result;
 	HASH_FIND(hh, forward_table, &entry.socket_request, sizeof(SocketRequest), result);
 
@@ -255,7 +258,7 @@ int get_and_delete_forward(int sd_from, ChordMessage__MsgCase msg_case) {
 			result->sds->len--;
 			return sd_list[last_index];
 		} else {
-			// There are zero entries in the 
+			// There are zero entries in the array
 			return -1;
 		}
 	}
@@ -293,7 +296,7 @@ int send_message(int sd, ChordMessage *message) {
 	int amount_sent;
 
 	// Pack and send message
-	int64_t len = chord_message__get_packed_size(message);
+	int64_t len = htobe64(chord_message__get_packed_size(message));
 	void *buffer = malloc(len);
 	chord_message__pack(message, buffer);
 
@@ -322,6 +325,8 @@ ChordMessage *receive_message(int sd) {
 	uint64_t message_size;
 	amount_read = read(sd, &message_size, sizeof(message_size));
 	assert(amount_read == sizeof(message_size));
+	// Fix endianness
+	message_size = be64toh(message_size);
 	
 	// Read actual message
 	void *buffer = malloc(message_size);
@@ -396,22 +401,32 @@ int lookup(char *key) {
 	//printf("Lookup not implemented\n");
 	// Get hash of key
 	uint64_t key_id = get_hash(key); 
+
+	// Display first line of output
+	printf("< %s %lu",key,key_id);
+
 	Node *result = find_successor(-1, key_id);
-	// TODO I need to restructure this, because find_successor can't just return
-	// the output directly; the result will arrive in a ChordMessage some time
-	// later and we can't just wait in this function until that happens
+	if(result != NULL) { // We already have the result, no need to wait for it
+		print_lookup_line(result);
+	}
+	// Otherwise, we wait until we receive a result, at which point
+
+}
+
+/**
+ * Print the second line of the lookup request.
+ * Also frees the given result node.
+ */
+int print_lookup_line(Node *result) {
 	uint64_t node_id = get_node_hash(result);
 	
 	// Print results
 	struct in_addr ip_addr;
 	ip_addr.s_addr = result->address;
-
-	printf("< %s",key);
-	printf(" %" PRIu64, node_id); //I don't understand how this works
-	printf(" %s %u\n", inet_ntoa(ip_addr), result->address); 
-
+	printf("< %lu %s %u", node_id, inet_ntoa(ip_addr), result->address);
+	
 	free(result);
-	return 0; 
+	return 0;
 }
 
 //TODO
