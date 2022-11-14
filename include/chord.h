@@ -33,18 +33,10 @@ typedef struct Message
  */
 void printKey(uint64_t key);
 
-typedef struct _NodeSocket {
-    Node node;
-    int socket;
-} NodeSocket;
-
 Node n; // initialize on creation of node
 Node *predecessor;
 Node *successors[MAX_SUCCESSORS];
 Node *finger[NUM_BYTES_IDENTIFIER];
-
-ForwardTable *address_table;
-AddressTable *forward_table;
 
 uint64_t get_node_hash(Node *n);
 uint64_t get_hash(char *buffer);
@@ -85,7 +77,6 @@ typedef struct _AddressTable {
 } AddressTable;
 
 // Functions 
-
 uint64_t get_node_hash(Node *nprime);
 uint64_t get_hash(char *buffer);
 
@@ -117,6 +108,7 @@ ChordMessage *receive_message(int sd);
 
 int lookup(char *key);
 int print_state();
+int print_lookup_line(Node *result);
 
 // return new server socket
 int setup_server();

@@ -4,12 +4,18 @@
 #include <time.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <math.h>
+#include <fcntl.h> // for open
+#include <unistd.h> // for close
 
 #include "chord_arg_parser.h"
 #include "chord.h"
 #include "hash.h"
 
 struct sha1sum_ctx *ctx;
+
+ForwardTable *forward_table;
+AddressTable *address_table;
 
 // Num successors
 uint8_t num_successors;
@@ -48,7 +54,9 @@ int main(int argc, char *argv[]) {
 	int cpret = clock_gettime(CLOCK_REALTIME, &last_check_predecessor);
 	int ffret = clock_gettime(CLOCK_REALTIME, &last_fix_fingers);
 	int spret = clock_gettime(CLOCK_REALTIME, &last_stabilize);
-
+	UNUSED(cpret);
+	UNUSED(ffret);
+	UNUSED(spret);
 
 	for(;;) {
 		timeout.tv_sec = 1;
@@ -122,7 +130,7 @@ int read_process_node(int sd)	{
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE: ;
 			Node *successor = receive_successor(sd, message);
 			if(successor != NULL) {
-
+				print_lookup_line(successor);
 			}
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: ;
@@ -201,7 +209,6 @@ Node *find_successor(int sd, uint64_t id) {
  * @return NULL if forwarded, otherwise, the successor
  */
 Node *receive_successor(int sd, ChordMessage *message) {
-	Node *nprime = message->find_successor_response->node;
 	//Get the appropriate socket to forward to 
 	int sd_to = get_and_delete_forward(sd, CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE);
 	
@@ -225,11 +232,16 @@ Node *receive_successor(int sd, ChordMessage *message) {
  */
 Node *closest_preceding_node(uint64_t id) {
 	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
-		if(n.key < finger[i]->key && &finger[i]->key < id) {
+		if(n.key < finger[i]->key && finger[i]->key < id) {
 			return finger[i];
 		}
 	}
 	return &n;
+}
+
+Node **get_successor_list() {
+	//TODO
+	return NULL;
 }
 
 ///////////////
@@ -331,14 +343,14 @@ ChordMessage *receive_message(int sd) {
 	// Read size of message
 	uint64_t message_size;
 	amount_read = read(sd, &message_size, sizeof(message_size));
-	assert(amount_read == sizeof(message_size));
+	assert((unsigned long) amount_read == sizeof(message_size));
 	// Fix endianness
 	message_size = be64toh(message_size);
 	
 	// Read actual message
 	void *buffer = malloc(message_size);
 	amount_read = read(sd, buffer, message_size);
-	assert(amount_read == message_size);
+	assert((unsigned long) amount_read == message_size);
 
 	// Unpack message
 	ChordMessage *message = chord_message__unpack(NULL, message_size, buffer);
@@ -364,11 +376,8 @@ int read_process_input(FILE *fd) {
 	size_t size = 1;
 	char *input = (char *) malloc(size), *command, *key;
 	int bytes_read = getline(&input, &size, fd); // Assuming fd is stdin
-	UNUSED(bytes_read);
 
-	UNUSED(bytes_read);
-
-	if(ret < 0) { // read error
+	if(bytes_read < 0) { // read error
 		perror("Input read error encountered\n"); ret = -1;
 	} else if(size <= 2) {
 	    perror("No command provided\n"); ret = -1;
@@ -406,15 +415,8 @@ int read_process_input(FILE *fd) {
  * @param key key to look up
  * @return 
  */
-/**
- * Look up the given key and output the function 
- * @author Adam
- * @param key key to look up
- * @return 
- */
 int lookup(char *key) {
 	//printf("Lookup not implemented\n");
-	// Get hash of key
 	// Get hash of key
 	uint64_t key_id = get_hash(key); 
 
@@ -427,7 +429,7 @@ int lookup(char *key) {
 	}
 	// Otherwise, we wait until we receive a result, at which point print_lookup_line
 	// will be called to display the second line of the request.
-
+	return 0;
 }
 
 /**
@@ -459,14 +461,7 @@ uint64_t get_hash(char *buffer) {
 }
 
 //TODO
-uint64_t get_node_hash(Node *n) {
-	UNUSED(n);
-	return -1;
-}
-
-//TODO
-uint64_t get_hash(char *buffer) {
-	UNUSED(buffer);
+int print_state() {
 	return -1;
 }
 
@@ -480,6 +475,7 @@ uint64_t get_hash(char *buffer) {
 int check_time(struct timespec *last_time, int timeout) {
 	struct timespec curr_time;
 	int cret = clock_gettime(CLOCK_REALTIME, &curr_time);
+	UNUSED(cret);
 	
 	if(curr_time.tv_sec - last_time->tv_sec >= timeout) {
 		return 1;
@@ -567,6 +563,12 @@ int stabilize() {
 	return 1;
 }
 
+//TODO
+int notify(Node *nprime) {
+	UNUSED(nprime);
+	return -1;
+}
+
 /**
  * fix fingers as written in chord article
  * @author Gary
@@ -574,7 +576,7 @@ int stabilize() {
  */
 int fix_fingers() {
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
-		Node* x = find_successor(-1, n.key + (pow(2, i-1)));
+		Node* x = find_successor(-1, n.key + (2 << (i-1)));
 		if(get_socket(x) < 0) {
 			// socket does not exist in the mappings/need to add it
 			add_socket(x);
@@ -721,13 +723,14 @@ int add_forward(int sd_from, ChordMessage__MsgCase msg_case, int sd_to) {
 	SocketRequest sock_req;
 
 	// set sock req
-	sock_req.sd = sd_to;
+	sock_req.sd = sd_from;
 	sock_req.msg_case = msg_case;
 
 	HASH_FIND_PTR(forward_table, &sock_req, entry);
 	if(entry) {
 		// found
 		int len = entry->sds->len + 1;
+		assert(len < MAX_CLIENTS);
 		entry->sds->len = len;
 		entry->sds->sds[len] = sd_to;
 	} else {
