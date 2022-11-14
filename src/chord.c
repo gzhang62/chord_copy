@@ -115,7 +115,7 @@ int read_process_node(int sd)	{
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE: ;
 			Node *successor = receive_successor(sd, message);
 			if(successor != NULL) {
-
+				print_lookup_line(successor);
 			}
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: ;
