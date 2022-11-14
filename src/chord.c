@@ -79,6 +79,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	ctx = sha1sum_create(NULL, 0);
+	printf("> "); // indicate we're waiting for user input
 	return 0;
 }
 
@@ -166,7 +167,7 @@ Node *find_successor(int sd, uint64_t id) {
 	} else {
 		Node *nprime = closest_preceding_node(id);
 		// Get nprime's socket
-		int nprime_sd = get_socket(*nprime); 
+		int nprime_sd = get_socket(nprime); 
 
 		// Construct and send FindSuccessorRequest
 		ChordMessage message;
