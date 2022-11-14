@@ -77,7 +77,7 @@ struct  _NotifyResponse
 struct  _FindSuccessorRequest
 {
   ProtobufCMessage base;
-  uint32_t key;
+  uint64_t key;
 };
 #define FIND_SUCCESSOR_REQUEST__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&find_successor_request__descriptor) \
@@ -168,8 +168,8 @@ typedef enum {
   CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE = 5,
   CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST = 6,
   CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE = 7,
-  CHORD_MESSAGE__MSG_CHECK_PREDECESSORY_REQUEST = 8,
-  CHORD_MESSAGE__MSG_CHECK_PREDECESSORY_RESPONSE = 9,
+  CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST = 8,
+  CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE = 9,
   CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST = 10,
   CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE = 11
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CHORD_MESSAGE__MSG)
@@ -187,8 +187,8 @@ struct  _ChordMessage
     FindSuccessorResponse *find_successor_response;
     GetPredecessorRequest *get_predecessor_request;
     GetPredecessorResponse *get_predecessor_response;
-    CheckPredecessorRequest *check_predecessory_request;
-    CheckPredecessorResponse *check_predecessory_response;
+    CheckPredecessorRequest *check_predecessor_request;
+    CheckPredecessorResponse *check_predecessor_response;
     GetSuccessorListRequest *get_successor_list_request;
     GetSuccessorListResponse *get_successor_list_response;
   };

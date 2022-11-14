@@ -14,7 +14,7 @@ message NotifyResponse {}
 
 // Find Successor
 message FindSuccessorRequest {
-  required fixed32 key = 1;
+  required fixed64 key = 1;
 }
 message FindSuccessorResponse {
   required Node node = 1;
@@ -48,8 +48,8 @@ message ChordMessage {
     GetPredecessorRequest get_predecessor_request = 6;
     GetPredecessorResponse get_predecessor_response = 7;
 
-    CheckPredecessorRequest check_predecessory_request = 8;
-    CheckPredecessorResponse check_predecessory_response = 9;
+    CheckPredecessorRequest check_predecessor_request = 8;
+    CheckPredecessorResponse check_predecessor_response = 9;
 
     GetSuccessorListRequest get_successor_list_request = 10;
     GetSuccessorListResponse get_successor_list_response = 11;
