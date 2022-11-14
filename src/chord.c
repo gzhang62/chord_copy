@@ -403,13 +403,14 @@ int lookup(char *key) {
 	uint64_t key_id = get_hash(key); 
 
 	// Display first line of output
-	printf("< %s %lu",key,key_id);
+	printf("< %s %lu\n",key,key_id);
 
 	Node *result = find_successor(-1, key_id);
 	if(result != NULL) { // We already have the result, no need to wait for it
 		print_lookup_line(result);
 	}
-	// Otherwise, we wait until we receive a result, at which point
+	// Otherwise, we wait until we receive a result, at which point print_lookup_line
+	// will be called to display the second line of the request.
 
 }
 
@@ -423,8 +424,8 @@ int print_lookup_line(Node *result) {
 	// Print results
 	struct in_addr ip_addr;
 	ip_addr.s_addr = result->address;
-	printf("< %lu %s %u", node_id, inet_ntoa(ip_addr), result->address);
-	
+	printf("< %lu %s %u\n", node_id, inet_ntoa(ip_addr), result->address);
+	printf("> "); // waiting for next user input
 	free(result);
 	return 0;
 }
