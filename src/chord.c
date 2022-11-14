@@ -729,14 +729,14 @@ int add_forward(int sd_from, ChordMessage__MsgCase msg_case, int sd_to) {
 	HASH_FIND_PTR(forward_table, &sock_req, entry);
 	if(entry) {
 		// found
-		int len = entry->sds->len + 1;
+		int len = entry->sds->len;
 		assert(len < MAX_CLIENTS);
-		entry->sds->len = len;
 		entry->sds->sds[len] = sd_to;
+		entry->sds->len = len + 1;
 	} else {
 		// not found, add new (sd_from, msg_case)
 		entry->socket_request = sock_req;
-		entry->sds->len = 0;
+		entry->sds->len = 1;
 		entry->sds->sds[0] = sd_to;
 		HASH_ADD_PTR(forward_table, socket_request, entry);
 	}
