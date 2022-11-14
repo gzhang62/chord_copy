@@ -12,20 +12,6 @@
 #define MAX_SUCCESSORS       32
 #define MAX_CLIENTS          1024
 
-// Variables
-
-Node n; // initialize on creation of node
-Node predecessor;
-Node successors[MAX_SUCCESSORS];
-Node finger[NUM_BYTES_IDENTIFIER];
-
-ForwardTable *address_table;
-AddressTable *forward_table;
-
-// Provided
-
-#define UNUSED(x) (void)(x)
-
 // Length of a Chord Node or item key
 const uint8_t KEY_LEN = 8;
 
@@ -53,13 +39,13 @@ typedef struct _NodeSocket {
     int socket;
 } NodeSocket;
 
-#define NUM_BYTES_IDENTIFIER 64
-#define MAX_SUCCESSORS       32
-
 Node n; // initialize on creation of node
-Node predecessor;
+Node *predecessor;
 Node *successors[MAX_SUCCESSORS];
 Node *finger[NUM_BYTES_IDENTIFIER];
+
+ForwardTable *address_table;
+AddressTable *forward_table;
 
 uint64_t get_node_hash(Node *n);
 uint64_t get_hash(char *buffer);
@@ -148,5 +134,7 @@ struct timespec last_check_predecessor;
 struct timespec last_fix_fingers;
 struct timespec last_stabilize;
 
+struct timespec wait_check_predecessor= {0, 0}; // 0 when there is no check predecessor request going on
+
 int add_socket(Node *n_prime);
-int delete_socket(Node *n_prime)
+int delete_socket(Node *n_prime);

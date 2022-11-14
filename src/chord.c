@@ -11,8 +11,6 @@
 
 struct sha1sum_ctx *ctx;
 
-
-
 // Num successors
 uint8_t num_successors;
 
@@ -292,7 +290,7 @@ int send_message(int sd, ChordMessage *message) {
  * @return if sd ==-1, return pointer to Node which contains successor; else, return NULL 
  */
 Node *find_successor(int sd, uint64_t id) {
-	if(n.key < id && id <= successors[0].key) {
+	if(n.key < id && id <= successors[0]->key) {
 		// if sd == -1, then we don't need to send anything
 		// because we're already at the endpoint
 		if(sd == -1) {
@@ -394,8 +392,8 @@ ChordMessage *receive_message(int sd) {
  */
 Node *closest_preceding_node(uint64_t id) {
 	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
-		if(n.key <= finger[i].key && finger[i].key <= id) {
-			return &finger[i];
+		if(n.key < finger[i]->key && &finger[i]->key < id) {
+			return finger[i];
 		}
 	}
 	return &n;
@@ -658,7 +656,7 @@ void exit_error(char * error_message) {
 /**
  * setup server socket
  * @author Gary
- * @param  
+ * @param server_port 
  * @return new server socket
  * @todo currently terminates everything on failure, more refinement may be needed
  */
@@ -740,12 +738,41 @@ int fix_fingers() {
 }
 
 int check_predecessor() {
-	
+	ChordMessage message;
+	AddressTable *entry;
+	struct sockaddr_in addr;
+	int sd;
+
+	// get socket for predecessor from global socket to address mappings
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = (unsigned short) htonl(predecessor->port);
+	addr.sin_addr.s_addr = predecessor->address;
+
+	HASH_FIND_PTR(address_table, &addr, entry);
+	assert(entry);
+	sd = entry->sd;
+
+	// construct chord message check predecessor
+	CheckPredecessorRequest request;
+	chord_message__init(&message);
+	check_predecessor_request__init(&request);
+	message.msg_case = CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST;		
+	message.check_predecessor_request = &request;
+
+	send_message(sd, &message);
+	// start timer
+	clock_gettime(CLOCK_REALTIME, &wait_check_predecessor);
+
+	return 0;
 }
 
 /**
  * Checks all periodic timeouts
  * @author Gary
+ * @param cpp timeout for check predecessor
+ * @param ffp timeout for fix fingers
+ * @param sp timeout for stabilizes
  */
 void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
@@ -756,11 +783,19 @@ void check_periodic(int cpp, int ffp, int sp) {
 		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function above
 	}
 
-	if(check_time(&last_check_predecessor, cpp)) {
-		// check_predecessor()
-		printf("Check Predecessor\n");
-		fflush(stdout);
-		clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
+	if(wait_check_predecessor.tv_sec == 0) {
+		// we have no ongoing check predecessor
+		if(check_time(&last_check_predecessor, cpp)) {
+			// check_predecessor()
+			printf("Check Predecessor\n");
+			fflush(stdout);
+			clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
+		}
+	} else {
+		if(check_time(&wait_check_predecessor, 3 * cpp)) {
+			delete_socket(predecessor);
+			predecessor = NULL;
+		}
 	}
 
 	if(check_time(&last_fix_fingers, ffp)) {
@@ -771,6 +806,11 @@ void check_periodic(int cpp, int ffp, int sp) {
 	}
 }
 
+/**
+ * Add to global address to socket mapping
+ * @author Gary
+ * @param n_prime Node whose address we want to map to a socket
+ */
 int add_socket(Node *n_prime) {
 	struct sockaddr_in addr;
 	int new_sock;
@@ -797,6 +837,11 @@ int add_socket(Node *n_prime) {
 	return 0;
 }
 
+/**
+ * Add to global address to socket mapping
+ * @author Gary
+ * @param n_prime Node whose address we want to map to a socket
+ */
 int delete_socket(Node *n_prime) {
 	struct sockaddr_in addr;
 	AddressTable *ret;
@@ -808,7 +853,9 @@ int delete_socket(Node *n_prime) {
 	HASH_FIND_PTR(address_table, &addr, ret);
 	if(ret) {
 		// address was found remove it
+		close(ret->sd);
 		HASH_DEL(address_table, ret);
+		free(ret);
 		return 0;
 	} else {
 		// address was not found return -1
@@ -816,14 +863,34 @@ int delete_socket(Node *n_prime) {
 	}
 }
 
+/**
+ * Add to global address to forward mapping
+ * @author Gary
+ * @param sd_from destination node
+ * @param msg_case request type
+ * @param sd_to node to forward to
+ */
 int add_forward(int sd_from, ChordMessage__MsgCase msg_case, int sd_to) {
-	ForwardTable *new_entry;
+	ForwardTable *entry;
 	SocketRequest sock_req;
 
 	// set sock req
 	sock_req.sd = sd_to;
 	sock_req.msg_case = msg_case;
 
-	HASH_FIND_PTR();
-	new_entry->socket_request = sock_req;
+	HASH_FIND_PTR(forward_table, &sock_req, entry);
+	if(entry) {
+		// found
+		int len = entry->sds->len + 1;
+		entry->sds->len = len;
+		entry->sds->sds[len] = sd_to;
+	} else {
+		// not found, add new (sd_from, msg_case)
+		entry->socket_request = sock_req;
+		entry->sds->len = 0;
+		entry->sds->sds[0] = sd_to;
+		HASH_ADD_PTR(forward_table, socket_request, entry);
+	}
+
+	return 1;
 }
