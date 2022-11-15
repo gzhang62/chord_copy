@@ -96,7 +96,7 @@ Node **get_successor_list(); //TODO unsure if this is the best output format
 int create();
 int join(Node *nprime);
 int stabilize();
-int notify(Node *nprime);
+int send_notify_request(Node *nprime); // notify called in stabilize
 int fix_fingers();
 int check_predecessor();
 

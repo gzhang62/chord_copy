@@ -184,17 +184,7 @@ Node *find_successor(int sd, uint64_t id) {
 		int nprime_sd = get_socket(nprime); 
 
 		// Construct and send FindSuccessorRequest
-		ChordMessage message;
-		FindSuccessorRequest request;
-		chord_message__init(&message);
-		find_successor_request__init(&request);
-		message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
-		request.key = id;
-		message.find_successor_request = &request;
-		send_message(nprime_sd, &message);
-
-		// Add an entry to the forward table to remind us later
-		add_forward(nprime_sd, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, sd);
+		send_successor_request(id, sd, nprime_sd);
 		return NULL;
 	} 
 }
@@ -559,7 +549,7 @@ int stabilize() {
 		}
 		successors[0] = x;
  	}
-	notify(immediate_successor);
+	send_notify_request(immediate_successor);
 	return 1;
 }
 
@@ -611,8 +601,38 @@ int check_predecessor() {
 	send_message(sd, &message);
 	// start timer
 	clock_gettime(CLOCK_REALTIME, &wait_check_predecessor);
-
 	return 0;
+}
+
+int create() {
+	predecessor = NULL;
+	successors[0] = &n;
+}
+
+int join(Node *nprime) {
+	int nprime_socket = add_socket(nprime);
+	predecessor = NULL;
+	send_successor_request(n.key, -1, nprime_socket);
+}
+
+/**
+ * send a notify request as in stabilize
+ * @author Gary
+ * @param successor node to notify
+ */
+int send_notify_request(Node *successor) {
+	ChordMessage message;
+	NotifyRequest request;
+	int successor_socket = get_socket(successor);
+	chord_message__init(&message);
+	notify_request__init(&request);
+	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_REQUEST;		
+	request.node = &n;
+	message.notify_request = &request;
+	send_message(successor_socket, &message);
+
+	// Add an entry to the forward table to remind us later
+	add_forward(successor_socket, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, -1);
 }
 
 /**
@@ -641,6 +661,7 @@ void check_periodic(int cpp, int ffp, int sp) {
 		}
 	} else {
 		if(check_time(&wait_check_predecessor, 3 * cpp)) {
+			// request to predecessor has timed out, set it to nil
 			delete_socket(predecessor);
 			predecessor = NULL;
 		}
@@ -658,6 +679,7 @@ void check_periodic(int cpp, int ffp, int sp) {
  * Add to global address to socket mapping
  * @author Gary
  * @param n_prime Node whose address we want to map to a socket
+ * @return new socket created
  */
 int add_socket(Node *n_prime) {
 	struct sockaddr_in addr;
@@ -682,7 +704,7 @@ int add_socket(Node *n_prime) {
 	a->sd = new_sock;
 	// add mapping to global hash map
 	HASH_ADD(hh, address_table, address, sizeof(struct sockaddr_in), a);
-	return 0;
+	return new_sock;
 }
 
 /**
@@ -742,4 +764,21 @@ int add_forward(int sd_from, ChordMessage__MsgCase msg_case, int sd_to) {
 	}
 
 	return 1;
+}
+
+/**
+ * Construct and send FindSuccessorRequest
+*/
+void send_successor_request(int id, int sd, int nprime_sd) {
+	ChordMessage message;
+	FindSuccessorRequest request;
+	chord_message__init(&message);
+	find_successor_request__init(&request);
+	message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
+	request.key = id;
+	message.find_successor_request = &request;
+	send_message(nprime_sd, &message);
+
+	// Add an entry to the forward table to remind us later
+	add_forward(nprime_sd, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, sd);
 }
