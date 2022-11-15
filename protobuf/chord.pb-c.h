@@ -20,6 +20,8 @@ typedef struct _NotifyRequest NotifyRequest;
 typedef struct _NotifyResponse NotifyResponse;
 typedef struct _FindSuccessorRequest FindSuccessorRequest;
 typedef struct _FindSuccessorResponse FindSuccessorResponse;
+typedef struct _RFindSuccReq RFindSuccReq;
+typedef struct _RFindSuccResp RFindSuccResp;
 typedef struct _GetPredecessorRequest GetPredecessorRequest;
 typedef struct _GetPredecessorResponse GetPredecessorResponse;
 typedef struct _CheckPredecessorRequest CheckPredecessorRequest;
@@ -37,7 +39,7 @@ typedef struct _ChordMessage ChordMessage;
 struct  _Node
 {
   ProtobufCMessage base;
-  uint32_t key;
+  uint64_t key;
   uint32_t address;
   uint32_t port;
 };
@@ -92,6 +94,31 @@ struct  _FindSuccessorResponse
 #define FIND_SUCCESSOR_RESPONSE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&find_successor_response__descriptor) \
     , NULL }
+
+
+/*
+ * Find Successor Recursive
+ */
+struct  _RFindSuccReq
+{
+  ProtobufCMessage base;
+  uint64_t key;
+  Node *requester;
+};
+#define R_FIND_SUCC_REQ__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&r_find_succ_req__descriptor) \
+    , 0, NULL }
+
+
+struct  _RFindSuccResp
+{
+  ProtobufCMessage base;
+  uint64_t key;
+  Node *node;
+};
+#define R_FIND_SUCC_RESP__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&r_find_succ_resp__descriptor) \
+    , 0, NULL }
 
 
 /*
@@ -171,7 +198,9 @@ typedef enum {
   CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST = 8,
   CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE = 9,
   CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST = 10,
-  CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE = 11
+  CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE = 11,
+  CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ = 12,
+  CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP = 13
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(CHORD_MESSAGE__MSG)
 } ChordMessage__MsgCase;
 
@@ -179,6 +208,8 @@ struct  _ChordMessage
 {
   ProtobufCMessage base;
   uint32_t version;
+  protobuf_c_boolean has_query_id;
+  int32_t query_id;
   ChordMessage__MsgCase msg_case;
   union {
     NotifyRequest *notify_request;
@@ -191,11 +222,13 @@ struct  _ChordMessage
     CheckPredecessorResponse *check_predecessor_response;
     GetSuccessorListRequest *get_successor_list_request;
     GetSuccessorListResponse *get_successor_list_response;
+    RFindSuccReq *r_find_succ_req;
+    RFindSuccResp *r_find_succ_resp;
   };
 };
 #define CHORD_MESSAGE__INIT \
  { PROTOBUF_C_MESSAGE_INIT (&chord_message__descriptor) \
-    , 417u, CHORD_MESSAGE__MSG__NOT_SET, {0} }
+    , 417u, 0, 0, CHORD_MESSAGE__MSG__NOT_SET, {0} }
 
 
 /* Node methods */
@@ -292,6 +325,44 @@ FindSuccessorResponse *
                       const uint8_t       *data);
 void   find_successor_response__free_unpacked
                      (FindSuccessorResponse *message,
+                      ProtobufCAllocator *allocator);
+/* RFindSuccReq methods */
+void   r_find_succ_req__init
+                     (RFindSuccReq         *message);
+size_t r_find_succ_req__get_packed_size
+                     (const RFindSuccReq   *message);
+size_t r_find_succ_req__pack
+                     (const RFindSuccReq   *message,
+                      uint8_t             *out);
+size_t r_find_succ_req__pack_to_buffer
+                     (const RFindSuccReq   *message,
+                      ProtobufCBuffer     *buffer);
+RFindSuccReq *
+       r_find_succ_req__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   r_find_succ_req__free_unpacked
+                     (RFindSuccReq *message,
+                      ProtobufCAllocator *allocator);
+/* RFindSuccResp methods */
+void   r_find_succ_resp__init
+                     (RFindSuccResp         *message);
+size_t r_find_succ_resp__get_packed_size
+                     (const RFindSuccResp   *message);
+size_t r_find_succ_resp__pack
+                     (const RFindSuccResp   *message,
+                      uint8_t             *out);
+size_t r_find_succ_resp__pack_to_buffer
+                     (const RFindSuccResp   *message,
+                      ProtobufCBuffer     *buffer);
+RFindSuccResp *
+       r_find_succ_resp__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   r_find_succ_resp__free_unpacked
+                     (RFindSuccResp *message,
                       ProtobufCAllocator *allocator);
 /* GetPredecessorRequest methods */
 void   get_predecessor_request__init
@@ -443,6 +514,12 @@ typedef void (*FindSuccessorRequest_Closure)
 typedef void (*FindSuccessorResponse_Closure)
                  (const FindSuccessorResponse *message,
                   void *closure_data);
+typedef void (*RFindSuccReq_Closure)
+                 (const RFindSuccReq *message,
+                  void *closure_data);
+typedef void (*RFindSuccResp_Closure)
+                 (const RFindSuccResp *message,
+                  void *closure_data);
 typedef void (*GetPredecessorRequest_Closure)
                  (const GetPredecessorRequest *message,
                   void *closure_data);
@@ -475,6 +552,8 @@ extern const ProtobufCMessageDescriptor notify_request__descriptor;
 extern const ProtobufCMessageDescriptor notify_response__descriptor;
 extern const ProtobufCMessageDescriptor find_successor_request__descriptor;
 extern const ProtobufCMessageDescriptor find_successor_response__descriptor;
+extern const ProtobufCMessageDescriptor r_find_succ_req__descriptor;
+extern const ProtobufCMessageDescriptor r_find_succ_resp__descriptor;
 extern const ProtobufCMessageDescriptor get_predecessor_request__descriptor;
 extern const ProtobufCMessageDescriptor get_predecessor_response__descriptor;
 extern const ProtobufCMessageDescriptor check_predecessor_request__descriptor;
