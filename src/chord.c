@@ -167,34 +167,13 @@ Node *find_successor(int sd, uint64_t id) {
 			return &n;
 		} else {	
 			// Construct and send FindSuccessorResponse
-			ChordMessage message;
-			FindSuccessorResponse response; 
-			// Not using the macros because they cause some warnings
-			chord_message__init(&message);
-			find_successor_response__init(&response);
-			message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
-			response.node = &n;
-			message.find_successor_response = &response;
-			send_message(sd, &message);
+			send_find_successor_response(sd, &n);
 			return NULL;
 		}
 	} else {
 		Node *nprime = closest_preceding_node(id);
-		// Get nprime's socket
-		int nprime_sd = get_socket(nprime); 
-
 		// Construct and send FindSuccessorRequest
-		ChordMessage message;
-		FindSuccessorRequest request;
-		chord_message__init(&message);
-		find_successor_request__init(&request);
-		message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
-		request.key = id;
-		message.find_successor_request = &request;
-		send_message(nprime_sd, &message);
-
-		// Add an entry to the forward table to remind us later
-		add_forward(nprime_sd, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, sd);
+		send_find_successor_request(sd, id, nprime);
 		return NULL;
 	} 
 }
@@ -286,6 +265,7 @@ int get_and_delete_forward(int sd_from, ChordMessage__MsgCase msg_case) {
 /**
  * Get the socket from address_table.
  * @author Adam
+ * @param nprime Node (pointer) for which we're looking to get associated socket
  * @return -1 if not found in address_table, else the socket from table.
  */
 int get_socket(Node *nprime) {
@@ -358,6 +338,47 @@ ChordMessage *receive_message(int sd) {
 
 	free(buffer);
 	return message;
+}
+
+/**
+ * Construct and send a ChordMessage FindSuccessorRequest.
+ * Also adds an entry into the table to route back to sd.
+ * @author Adam
+ * @param sd Socket which the request came from
+ * @param id ID which was identified with the socket
+ * @param nprime The node which is closest to the given id
+ */
+void send_find_successor_request(int sd, int id, Node *nprime) {
+	// Get nprime's socket
+	int nprime_sd = get_socket(nprime); 
+
+	// Construct response
+	ChordMessage message;
+	FindSuccessorRequest request;
+	chord_message__init(&message);
+	find_successor_request__init(&request);
+	message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
+	request.key = id;
+	message.find_successor_request = &request;
+	send_message(nprime_sd, &message);
+
+	// Add an entry to the forward table to remind us later
+	add_forward(nprime_sd, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, sd);
+}
+
+/**
+ * Construct and send a ChordMessage FindSuccessorResponse
+ */
+void send_find_successor_response(int sd, Node *nprime) {
+	ChordMessage message;
+	FindSuccessorResponse response; 
+	// Not using the macros because they cause some warnings
+	chord_message__init(&message);
+	find_successor_response__init(&response);
+	message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
+	response.node = nprime;
+	message.find_successor_response = &response;
+	send_message(sd, &message);
 }
 
 ///////////////////////////

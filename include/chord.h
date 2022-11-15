@@ -100,10 +100,15 @@ int notify(Node *nprime);
 int fix_fingers();
 int check_predecessor();
 
+// Node interactions
 
 int read_process_node(int sd);     // node fds
 int read_process_input(FILE *fd);    // stdin fd
 int send_message(int sd, ChordMessage *message);
+
+void send_find_successor_request(int sd, int id, Node *nprime);
+void send_find_successor_response(int sd, Node *nprime);
+
 ChordMessage *receive_message(int sd);
 
 int lookup(char *key);
