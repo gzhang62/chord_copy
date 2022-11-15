@@ -14,8 +14,9 @@
 
 struct sha1sum_ctx *ctx;
 
-ForwardTable *forward_table;
+Callback callback_array[RAND_MAX];
 AddressTable *address_table;
+
 
 // Num successors
 uint8_t num_successors;
@@ -26,7 +27,6 @@ void printKey(uint64_t key) {
 
 int main(int argc, char *argv[]) {
 	address_table = NULL;
-	forward_table = NULL;
 
 	int num_clients = 0;
 	int clients[MAX_CLIENTS]; // keep track of fds, if fd is present, fds[i] = 1 else fds[i] = 0
@@ -179,29 +179,18 @@ Node *find_successor(int sd, uint64_t id) {
 }
 
 /**
- * Look for the node to forward to in the hash table, 
- * then send it along if it's not -1; if it is -1, 
- * then we are the termination point and we want to 
- * use the value.
- * If this 
+ * After receiving, look in the  
  * @author Adam
  * @return NULL if forwarded, otherwise, the successor
  */
 Node *receive_successor(int sd, ChordMessage *message) {
-	//Get the appropriate socket to forward to 
-	int sd_to = get_and_delete_forward(sd, CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE);
-	
-	if(sd_to == -1) {
-		// We aren't forwarding this one; this is the source of the request		
-		// Need to copy over the data before returning
-		Node* ret = malloc(sizeof(Node));
-		memcpy(ret,message->find_successor_response->node,sizeof(Node));
-		return ret; // the message is free'd in read_process_node
-	} else {
-		// Pass along ChordMessage
-		send_message(sd_to,message);
-		return NULL;
-	}
+	// We received this directly from the desired node
+	assert(message->msg_case == CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE);
+	assert(message->has_query_id);
+
+	// The callback table tells us what function to use
+	// TODO
+	do_callback(message);
 }
 
 /**
@@ -226,41 +215,6 @@ Node **get_successor_list() {
 ///////////////
 // Auxiliary //
 ///////////////
-
-/**
- * Look for an entry with the given name. If it exists, return the entry
- * and remove it from the table. Otherwise, return -1.
- * @author Adam
- * @return -1 if entry not found, otherwise some associated node from the entry
- */
-int get_and_delete_forward(int sd_from, ChordMessage__MsgCase msg_case) {
-	// Set up the entry to find
-	ForwardTable entry;
-	memset(&entry, 0, sizeof(entry));
-	entry.socket_request.msg_case = msg_case;
-	entry.socket_request.sd = sd_from;
-
-	// Find the entry, store in result
-	ForwardTable *result;
-	HASH_FIND(hh, forward_table, &entry.socket_request, sizeof(SocketRequest), result);
-
-	if(result == NULL) {
-		// The entry does not exist in the table
-		return -1;
-	} else {
-		// Result should contain a pointer to a struct containing an array
-		// We want to pop some element added and return it
-		int *sd_list = result->sds->sds;
-		int last_index = result->sds->len-1;
-		if(last_index >= 0) {
-			result->sds->len--;
-			return sd_list[last_index];
-		} else {
-			// There are zero entries in the array
-			return -1;
-		}
-	}
-}
 
 /**
  * Get the socket from address_table.
@@ -362,8 +316,6 @@ void send_find_successor_request(int sd, int id, Node *nprime) {
 	message.find_successor_request = &request;
 	send_message(nprime_sd, &message);
 
-	// Add an entry to the forward table to remind us later
-	add_forward(nprime_sd, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, sd);
 }
 
 /**
@@ -379,6 +331,62 @@ void send_find_successor_response(int sd, Node *nprime) {
 	response.node = nprime;
 	message.find_successor_response = &response;
 	send_message(sd, &message);
+}
+
+/**
+ * Create and assign the callback into the array.
+ * @author Adam
+ * @return The location of the callback in the callback_array (query id)
+*/
+int add_callback(CallbackFunction func, int arg) {
+	Callback callback = {func, arg};
+	int query_id = rand();
+	callback_array[query_id] = callback;
+	return query_id;
+}
+
+int do_callback(ChordMessage *message) {
+	assert(message->has_query_id);
+	Callback callback = callback_array[message->query_id];
+	Node *node = message->find_successor_response->node;
+	switch(callback.func) {
+		case CALLBACK_FIND_SUCCESSOR: ;
+			print_lookup_line(node);
+			break;
+		case CALLBACK_JOIN: ;
+			//TODO Which successor?
+			// Make a new value if it doesn't yet exist
+			// and copy over the value
+			if(successors[callback.arg] == NULL) {
+				successors[callback.arg] = malloc(sizeof(Node));
+			}
+			memcpy(successors[callback.arg], node, sizeof(Node));
+			break;
+		case CALLBACK_FIX_FINGERS: ;
+			if(finger[callback.arg] == NULL) {
+				finger[callback.arg] = malloc(sizeof(Node));
+			}
+			memcpy(finger[callback.arg], node, sizeof(Node));			
+			break;
+		default: ;
+			exit_error("Callback provided with unknown function enum");
+	}
+	
+	// Remove from callback array
+	//callback_array[message->query_id];
+	return -1;
+}
+
+/**
+ * Allocate a new memory copy of the given node.
+ * @author Adam
+ * @param nprime Node to copy over
+ * @return Address of new node
+ */
+Node *copy_node(Node *nprime) {
+	Node *new_node = malloc(sizeof(Node));
+	memcpy(new_node, nprime, sizeof(Node));
+	return new_node;
 }
 
 ///////////////////////////
@@ -730,37 +738,4 @@ int delete_socket(Node *n_prime) {
 		// address was not found return -1
 		return -1;
 	}
-}
-
-/**
- * Add to global address to forward mapping
- * @author Gary
- * @param sd_from destination node
- * @param msg_case request type
- * @param sd_to node to forward to
- */
-int add_forward(int sd_from, ChordMessage__MsgCase msg_case, int sd_to) {
-	ForwardTable *entry;
-	SocketRequest sock_req;
-
-	// set sock req
-	sock_req.sd = sd_from;
-	sock_req.msg_case = msg_case;
-
-	HASH_FIND_PTR(forward_table, &sock_req, entry);
-	if(entry) {
-		// found
-		int len = entry->sds->len;
-		assert(len < MAX_CLIENTS);
-		entry->sds->sds[len] = sd_to;
-		entry->sds->len = len + 1;
-	} else {
-		// not found, add new (sd_from, msg_case)
-		entry->socket_request = sock_req;
-		entry->sds->len = 1;
-		entry->sds->sds[0] = sd_to;
-		HASH_ADD_PTR(forward_table, socket_request, entry);
-	}
-
-	return 1;
 }

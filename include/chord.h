@@ -43,32 +43,6 @@ uint64_t get_hash(char *buffer);
 
 // Stuff we created
 
-// Structures for hash map for forwarding responses to the appropriate node
-// Mapping (destination node, request) -> [list_of_nodes_to_forward_to]
-// TODO this will not work if the sockets change during the function
-// operation; to fix this, we would need to use addresses instead of sockets
-// as the keys we're pairing, then either (1) make a map from addresses to
-// sockets, or (2) change to using UDP and use recv_from.
-
-// Key in hash map
-typedef struct _SocketRequest {
-    int sd;
-    ChordMessage__MsgCase msg_case;
-} SocketRequest;
-
-// Value in hash map
-typedef struct _SocketList {
-    int len;
-    int sds[MAX_CLIENTS];
-} SocketList;
-
-// Mapping struct (uthash)
-typedef struct _ForwardTable {
-    SocketRequest socket_request;     /* key */
-    SocketList *sds;                  /* value */
-    UT_hash_handle hh;                /* makes this structure hashable */
-} ForwardTable;
-
 // Table mapping socket address to socket
 typedef struct _AddressTable {
     struct sockaddr_in address;       /* key */
@@ -76,16 +50,27 @@ typedef struct _AddressTable {
     UT_hash_handle hh;                /* makes this structure hashable */
 } AddressTable;
 
+typedef enum {
+    CALLBACK_FIND_SUCCESSOR = 1,
+    CALLBACK_JOIN = 2,
+    CALLBACK_FIX_FINGERS = 3
+} CallbackFunction;
+
+/**
+ * Define what we want to do with the data after receiving a response.
+ * If func == CALLBACK_FIND_SUCCESSOR, arg is ignored
+ * If == CALLBACK_JOIN or CALLBACK_FIX_FINGERS, arg indicates the index 
+ * into successors[] or finger[] (respectively) we want to update
+ */
+typedef struct _Callback {
+    CallbackFunction func;
+    int arg;
+} Callback;
+
+
 // Functions 
 uint64_t get_node_hash(Node *nprime);
 uint64_t get_hash(char *buffer);
-
-int add_forward(int sd_from, ChordMessage__MsgCase msg_case, int sd_to_add);
-int get_and_delete_forward(int sd_from, ChordMessage__MsgCase msg_case);
-
-int add_socket(Node *nprime);
-int get_socket(Node *nprime);
-int delete_socket(Node *nprime);
 
 Node *find_successor(int sd, uint64_t id);
 Node *receive_successor(int sd, ChordMessage *message);
@@ -115,6 +100,9 @@ int lookup(char *key);
 int print_state();
 int print_lookup_line(Node *result);
 
+// Other
+Node *copy_node(Node *nprime);
+
 // return new server socket
 int setup_server();
 // add new client to known 
@@ -133,5 +121,12 @@ struct timespec last_stabilize;
 
 struct timespec wait_check_predecessor= {0, 0}; // 0 when there is no check predecessor request going on
 
-int add_socket(Node *n_prime);
-int delete_socket(Node *n_prime);
+
+// Stateful functions
+
+int add_callback(CallbackFunction func, int arg); 
+int do_callback(ChordMessage *message);
+
+int add_socket(Node *nprime);
+int get_socket(Node *nprime);
+int delete_socket(Node *nprime);
