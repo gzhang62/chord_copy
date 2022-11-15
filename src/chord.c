@@ -113,9 +113,8 @@ int read_process_node(int sd)	{
 		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
 			//TODO
 			break;
-		case CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST: ;
-			uint64_t id = message->find_successor_request->key;
-			find_successor(sd, id);
+		case CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ: ;
+			receive_successor_request(sd, message);
 			break;
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST: ;
 			//TODO
@@ -127,11 +126,8 @@ int read_process_node(int sd)	{
 			//TODO
 			break;
 		
-		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE: ;
-			Node *successor = receive_successor(sd, message);
-			if(successor != NULL) {
-				print_lookup_line(successor);
-			}
+		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: ;
+			receive_successor_response(sd, message);
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: ;
 			//TODO
@@ -152,14 +148,19 @@ int read_process_node(int sd)	{
 
 /** 
  * Does a request for the successor which should store the given node.
- * (The result will be gotten back at some point and processed with receive_successor.)
+ * (The result will be gotten back at some point and processed with receive_successor_response.)
  * @author Adam
  * @param sd the socket for the node which requested successor; -1 if initiated by user
- * @param id the hash which is associated with some node
+ * @param message Message received
  * @return return its own node if no requests are necessary (we requested from this node);
  * otherwise, return NULL (and do a request/response)
  */
-Node *find_successor(int sd, uint64_t id) {
+Node *receive_successor_request(int sd, ChordMessage *message) {
+	uint64_t id = message->r_find_succ_req->key;
+	assert(message->has_query_id);
+	uint32_t query_id = message->query_id;
+	Node *original_node = message->r_find_succ_req->requester;
+
 	if(n.key < id && id <= successors[0]->key) {
 		// if sd == -1, then we don't need to send anything
 		// because we're already at the endpoint
@@ -167,23 +168,25 @@ Node *find_successor(int sd, uint64_t id) {
 			return &n;
 		} else {	
 			// Construct and send FindSuccessorResponse
-			send_find_successor_response(sd, &n);
+			connect_send_find_successor_response(original_node, &n, query_id);
 			return NULL;
 		}
 	} else {
-		Node *nprime = closest_preceding_node(id);
+		Node *nprime = closest_preceding_node(id);	
+		// Get nprime's socket
+		int nprime_sd = get_socket(nprime); 
 		// Construct and send FindSuccessorRequest
-		send_find_successor_request(sd, id, nprime);
+		send_find_successor_request(nprime_sd, id, query_id);
 		return NULL;
 	} 
 }
 
 /**
- * After receiving, look in the  
+ * After receiving, do a callback
  * @author Adam
  * @return NULL if forwarded, otherwise, the successor
  */
-Node *receive_successor(int sd, ChordMessage *message) {
+Node *receive_successor_response(int sd, ChordMessage *message) {
 	// We received this directly from the desired node
 	assert(message->msg_case == CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE);
 	assert(message->has_query_id);
@@ -191,6 +194,7 @@ Node *receive_successor(int sd, ChordMessage *message) {
 	// The callback table tells us what function to use
 	// TODO
 	do_callback(message);
+	return NULL;
 }
 
 /**
@@ -265,6 +269,21 @@ int send_message(int sd, ChordMessage *message) {
 }
 
 /**
+ * Connect to the address in request_node and send the response
+ * to that node
+ * @author Adam
+ * @author Gary
+ * @param original_node the node which first made the receive_successor_request request 
+ */
+void connect_send_find_successor_response(Node *original_node, Node *node_to_send, int query_id) {
+	//TODO Make TCP connection
+	// create new temp socket
+	int original_sd = add_socket(original_node);
+	send_find_successor_response(original_sd, node_to_send, query_id);
+	close(original_sd);
+}
+
+/**
  * Given a socket descriptor, allocate a buffer of appropriate length,
  * get data, and unpack into a ChordMessage which is returned.
  * @author Adam
@@ -296,40 +315,49 @@ ChordMessage *receive_message(int sd) {
 
 /**
  * Construct and send a ChordMessage FindSuccessorRequest.
- * Also adds an entry into the table to route back to sd.
  * @author Adam
- * @param sd Socket which the request came from
+ * @param sd Socket which we are sending to 
  * @param id ID which was identified with the socket
- * @param nprime The node which is closest to the given id
+ * @param query_id Query ID
  */
-void send_find_successor_request(int sd, int id, Node *nprime) {
-	// Get nprime's socket
-	int nprime_sd = get_socket(nprime); 
+void send_find_successor_request(int sd, int id, int query_id) {
+
+	// Add a callback which will be referenced when we receive a final response
+	int query_id = add_callback(CALLBACK_FIND_SUCCESSOR, 0);
 
 	// Construct response
 	ChordMessage message;
-	FindSuccessorRequest request;
+	RFindSuccReq request;
 	chord_message__init(&message);
-	find_successor_request__init(&request);
-	message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
+	r_find_succ_req__init(&request);
+	// TODO do we need to free these? 
+	
+
+	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;		
 	request.key = id;
 	message.find_successor_request = &request;
-	send_message(nprime_sd, &message);
+	message.has_query_id = true;
+	message.query_id = query_id;
 
+	send_message(sd, &message);
 }
 
 /**
  * Construct and send a ChordMessage FindSuccessorResponse
  */
-void send_find_successor_response(int sd, Node *nprime) {
+void send_find_successor_response(int sd, Node *nprime, int query_id) {
 	ChordMessage message;
-	FindSuccessorResponse response; 
+	RFindSuccResp response; 
 	// Not using the macros because they cause some warnings
 	chord_message__init(&message);
 	find_successor_response__init(&response);
-	message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
-	response.node = nprime;
+	// TODO do we need to free these? 
+
+	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;		
 	message.find_successor_response = &response;
+	message.has_query_id = true;
+	message.query_id = query_id;
+
 	send_message(sd, &message);
 }
 
@@ -342,6 +370,7 @@ int add_callback(CallbackFunction func, int arg) {
 	Callback callback = {func, arg};
 	int query_id = rand();
 	callback_array[query_id] = callback;
+	printf("Added %d, args %d -> query_id %d\n", func, arg, query_id);
 	return query_id;
 }
 
@@ -374,7 +403,7 @@ int do_callback(ChordMessage *message) {
 	
 	// Remove from callback array
 	//callback_array[message->query_id];
-	return -1;
+	return 0;
 }
 
 /**
@@ -452,7 +481,7 @@ int lookup(char *key) {
 	// Display first line of output
 	printf("< %s %lu\n",key,key_id);
 
-	Node *result = find_successor(-1, key_id);
+	Node *result = receive_successor_request(-1, key_id);
 	if(result != NULL) { // We already have the result, no need to wait for it
 		print_lookup_line(result);
 	}
@@ -464,6 +493,7 @@ int lookup(char *key) {
 /**
  * Print the second line of the lookup request.
  * Also frees the given result node.
+ * @author Adam
  */
 int print_lookup_line(Node *result) {
 	uint64_t node_id = get_node_hash(result);
@@ -605,7 +635,7 @@ int notify(Node *nprime) {
  */
 int fix_fingers() {
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
-		Node* x = find_successor(-1, n.key + (2 << (i-1)));
+		Node* x = receive_successor_request(-1, n.key + (2 << (i-1)));
 		if(get_socket(x) < 0) {
 			// socket does not exist in the mappings/need to add it
 			add_socket(x);
@@ -711,7 +741,7 @@ int add_socket(Node *n_prime) {
 	a->sd = new_sock;
 	// add mapping to global hash map
 	HASH_ADD(hh, address_table, address, sizeof(struct sockaddr_in), a);
-	return 0;
+	return new_sock;
 }
 
 /**
