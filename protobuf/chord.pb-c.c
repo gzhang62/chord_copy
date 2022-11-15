@@ -232,6 +232,96 @@ void   find_successor_response__free_unpacked
   assert(message->base.descriptor == &find_successor_response__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
+void   r_find_succ_req__init
+                     (RFindSuccReq         *message)
+{
+  static const RFindSuccReq init_value = R_FIND_SUCC_REQ__INIT;
+  *message = init_value;
+}
+size_t r_find_succ_req__get_packed_size
+                     (const RFindSuccReq *message)
+{
+  assert(message->base.descriptor == &r_find_succ_req__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t r_find_succ_req__pack
+                     (const RFindSuccReq *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &r_find_succ_req__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t r_find_succ_req__pack_to_buffer
+                     (const RFindSuccReq *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &r_find_succ_req__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+RFindSuccReq *
+       r_find_succ_req__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (RFindSuccReq *)
+     protobuf_c_message_unpack (&r_find_succ_req__descriptor,
+                                allocator, len, data);
+}
+void   r_find_succ_req__free_unpacked
+                     (RFindSuccReq *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &r_find_succ_req__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   r_find_succ_resp__init
+                     (RFindSuccResp         *message)
+{
+  static const RFindSuccResp init_value = R_FIND_SUCC_RESP__INIT;
+  *message = init_value;
+}
+size_t r_find_succ_resp__get_packed_size
+                     (const RFindSuccResp *message)
+{
+  assert(message->base.descriptor == &r_find_succ_resp__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t r_find_succ_resp__pack
+                     (const RFindSuccResp *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &r_find_succ_resp__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t r_find_succ_resp__pack_to_buffer
+                     (const RFindSuccResp *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &r_find_succ_resp__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+RFindSuccResp *
+       r_find_succ_resp__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (RFindSuccResp *)
+     protobuf_c_message_unpack (&r_find_succ_resp__descriptor,
+                                allocator, len, data);
+}
+void   r_find_succ_resp__free_unpacked
+                     (RFindSuccResp *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &r_find_succ_resp__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
 void   get_predecessor_request__init
                      (GetPredecessorRequest         *message)
 {
@@ -553,7 +643,7 @@ static const ProtobufCFieldDescriptor node__field_descriptors[3] =
     "key",
     1,
     PROTOBUF_C_LABEL_REQUIRED,
-    PROTOBUF_C_TYPE_FIXED32,
+    PROTOBUF_C_TYPE_FIXED64,
     0,   /* quantifier_offset */
     offsetof(Node, key),
     NULL,
@@ -743,6 +833,108 @@ const ProtobufCMessageDescriptor find_successor_response__descriptor =
   (ProtobufCMessageInit) find_successor_response__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
+static const ProtobufCFieldDescriptor r_find_succ_req__field_descriptors[2] =
+{
+  {
+    "key",
+    1,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_FIXED64,
+    0,   /* quantifier_offset */
+    offsetof(RFindSuccReq, key),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "requester",
+    2,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(RFindSuccReq, requester),
+    &node__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned r_find_succ_req__field_indices_by_name[] = {
+  0,   /* field[0] = key */
+  1,   /* field[1] = requester */
+};
+static const ProtobufCIntRange r_find_succ_req__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor r_find_succ_req__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "rFindSuccReq",
+  "RFindSuccReq",
+  "RFindSuccReq",
+  "",
+  sizeof(RFindSuccReq),
+  2,
+  r_find_succ_req__field_descriptors,
+  r_find_succ_req__field_indices_by_name,
+  1,  r_find_succ_req__number_ranges,
+  (ProtobufCMessageInit) r_find_succ_req__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor r_find_succ_resp__field_descriptors[2] =
+{
+  {
+    "key",
+    1,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_FIXED64,
+    0,   /* quantifier_offset */
+    offsetof(RFindSuccResp, key),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "node",
+    2,
+    PROTOBUF_C_LABEL_REQUIRED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(RFindSuccResp, node),
+    &node__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned r_find_succ_resp__field_indices_by_name[] = {
+  0,   /* field[0] = key */
+  1,   /* field[1] = node */
+};
+static const ProtobufCIntRange r_find_succ_resp__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor r_find_succ_resp__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "rFindSuccResp",
+  "RFindSuccResp",
+  "RFindSuccResp",
+  "",
+  sizeof(RFindSuccResp),
+  2,
+  r_find_succ_resp__field_descriptors,
+  r_find_succ_resp__field_indices_by_name,
+  1,  r_find_succ_resp__number_ranges,
+  (ProtobufCMessageInit) r_find_succ_resp__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
 #define get_predecessor_request__field_descriptors NULL
 #define get_predecessor_request__field_indices_by_name NULL
 #define get_predecessor_request__number_ranges NULL
@@ -892,7 +1084,7 @@ const ProtobufCMessageDescriptor get_successor_list_response__descriptor =
   NULL,NULL,NULL    /* reserved[123] */
 };
 static const uint32_t chord_message__version__default_value = 417u;
-static const ProtobufCFieldDescriptor chord_message__field_descriptors[11] =
+static const ProtobufCFieldDescriptor chord_message__field_descriptors[14] =
 {
   {
     "version",
@@ -1026,6 +1218,42 @@ static const ProtobufCFieldDescriptor chord_message__field_descriptors[11] =
     0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
+  {
+    "r_find_succ_req",
+    12,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(ChordMessage, msg_case),
+    offsetof(ChordMessage, r_find_succ_req),
+    &r_find_succ_req__descriptor,
+    NULL,
+    0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "r_find_succ_resp",
+    13,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(ChordMessage, msg_case),
+    offsetof(ChordMessage, r_find_succ_resp),
+    &r_find_succ_resp__descriptor,
+    NULL,
+    0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "query_id",
+    14,
+    PROTOBUF_C_LABEL_OPTIONAL,
+    PROTOBUF_C_TYPE_INT32,
+    offsetof(ChordMessage, has_query_id),
+    offsetof(ChordMessage, query_id),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
 };
 static const unsigned chord_message__field_indices_by_name[] = {
   7,   /* field[7] = check_predecessor_request */
@@ -1038,12 +1266,15 @@ static const unsigned chord_message__field_indices_by_name[] = {
   10,   /* field[10] = get_successor_list_response */
   1,   /* field[1] = notify_request */
   2,   /* field[2] = notify_response */
+  13,   /* field[13] = query_id */
+  11,   /* field[11] = r_find_succ_req */
+  12,   /* field[12] = r_find_succ_resp */
   0,   /* field[0] = version */
 };
 static const ProtobufCIntRange chord_message__number_ranges[1 + 1] =
 {
   { 1, 0 },
-  { 0, 11 }
+  { 0, 14 }
 };
 const ProtobufCMessageDescriptor chord_message__descriptor =
 {
@@ -1053,7 +1284,7 @@ const ProtobufCMessageDescriptor chord_message__descriptor =
   "ChordMessage",
   "",
   sizeof(ChordMessage),
-  11,
+  14,
   chord_message__field_descriptors,
   chord_message__field_indices_by_name,
   1,  chord_message__number_ranges,
