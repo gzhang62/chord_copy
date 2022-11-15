@@ -166,36 +166,13 @@ Node *find_successor(int sd, uint64_t id) {
 		if(sd == -1) {
 			return &n;
 		} else {	
-			// Construct and send FindSuccessorResponse
-			ChordMessage message;
-			FindSuccessorResponse response; 
-			// Not using the macros because they cause some warnings
-			chord_message__init(&message);
-			find_successor_response__init(&response);
-			message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
-			response.node = &n;
-			message.find_successor_response = &response;
-			send_message(sd, &message);
-			return NULL;
+			send_find_successor_response(sd, &n);
 		}
 	} else {
 		Node *nprime = closest_preceding_node(id);
 		// Get nprime's socket
 		int nprime_sd = get_socket(nprime); 
-
-		// Construct and send FindSuccessorRequest
-		ChordMessage message;
-		FindSuccessorRequest request;
-		chord_message__init(&message);
-		find_successor_request__init(&request);
-		message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
-		request.key = id;
-		message.find_successor_request = &request;
-		send_message(nprime_sd, &message);
-
-		// Add an entry to the forward table to remind us later
-		add_forward(nprime_sd, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, sd);
-		return NULL;
+		send_find_successor_request(sd, nprime_sd, id);
 	} 
 }
 
@@ -328,6 +305,34 @@ int send_message(int sd, ChordMessage *message) {
 
 	free(buffer);
 	return 0;
+}
+
+void send_find_successor_response(int sd, Node *node) {
+	// Construct and send FindSuccessorResponse
+	ChordMessage message;
+	FindSuccessorResponse response; 
+	// Not using the macros because they cause some warnings
+	chord_message__init(&message);
+	find_successor_response__init(&response);
+	message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_RESPONSE;		
+	response.node = node;
+	message.find_successor_response = &response;
+	send_message(sd, &message);
+}
+
+void send_find_successor_request(int sd, int nprime_sd, int id) {
+	// Construct and send FindSuccessorRequest
+	ChordMessage message;
+	FindSuccessorRequest request;
+	chord_message__init(&message);
+	find_successor_request__init(&request);
+	message.msg_case = CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST;		
+	request.key = id;
+	message.find_successor_request = &request;
+	send_message(sd, &message);
+
+	// Add an entry to the forward table to remind us later
+	add_forward(nprime_sd, CHORD_MESSAGE__MSG_FIND_SUCCESSOR_REQUEST, sd);
 }
 
 /**

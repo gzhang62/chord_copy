@@ -104,7 +104,11 @@ int check_predecessor();
 int read_process_node(int sd);     // node fds
 int read_process_input(FILE *fd);    // stdin fd
 int send_message(int sd, ChordMessage *message);
+void send_find_successor_response(int sd, Node *node);
+void send_find_successor_request(int sd, int nprime_sd, int id);
+
 ChordMessage *receive_message(int sd);
+
 
 int lookup(char *key);
 int print_state();
