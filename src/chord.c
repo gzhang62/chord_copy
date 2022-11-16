@@ -574,7 +574,7 @@ int setup_server(int server_port) {
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	server_addr.sin_port = htons(server_port);		
+	server_addr.sin_port = (unsigned short) server_port;		
 
 	// bind socket to address
 	if(bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
@@ -780,8 +780,8 @@ int get_socket(Node *nprime) {
 	AddressTable entry;
 	memset(&entry, 0, sizeof(entry));
 	entry.address.sin_family = AF_INET;
-	entry.address.sin_addr.s_addr = htonl(nprime->address);
-	entry.address.sin_port = (u_short) htonl(nprime->port); // NOTE: copying 32 bit into 16 bit
+	entry.address.sin_addr.s_addr = nprime->address;
+	entry.address.sin_port = (unsigned short) (nprime->port); // NOTE: copying 32 bit into 16 bit
 
 	// Find in global variable `address_table`
 	AddressTable *result;
@@ -802,8 +802,8 @@ int add_socket(Node *n_prime) {
 	// set up address
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons((unsigned short) n_prime->port);
-	addr.sin_addr.s_addr = htonl(n_prime->address);
+	addr.sin_port = (unsigned short) n_prime->port;
+	addr.sin_addr.s_addr = (n_prime->address);
 
 	HASH_FIND_PTR(address_table, &addr, ret);
 	if(ret) {
@@ -815,7 +815,7 @@ int add_socket(Node *n_prime) {
 			exit_error("Could not make socket");
 		}
 		// connect new socket to peer
-		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(struct sockaddr *)) != 0) {
+		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
 			exit_error("Could not connect with peer");
 		}
 		// set up new AddressTable entry
@@ -840,8 +840,8 @@ int delete_socket(Node *n_prime) {
 	// set addr
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons((unsigned short) n_prime->port);
-	addr.sin_addr.s_addr = htonl(n_prime->address);
+	addr.sin_port = (unsigned short) n_prime->port;
+	addr.sin_addr.s_addr = (n_prime->address);
 	HASH_FIND_PTR(address_table, &addr, ret);
 	if(ret) {
 		// address was found remove it
