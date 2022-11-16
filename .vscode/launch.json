@@ -35,5 +35,94 @@
                 "preLaunchTask": "Make a4",
                 "miDebuggerPath": "/usr/bin/gdb"
             },
+
+            {
+                "name": "No Args",
+                "type": "cppdbg",
+                "request": "launch",
+                "program": "${workspaceFolder}/chord",
+                "args": [
+                ],
+                "stopAtEntry": false,
+                "cwd": "${workspaceFolder}",
+                "environment": [],
+                "MIMode": "gdb",
+                "setupCommands": [
+                    {
+                        "description": "Enable pretty-printing for gdb",
+                        "text": "-enable-pretty-printing",
+                        "ignoreFailures": true
+                    }
+                ],
+                "preLaunchTask": "Make a4",
+                "miDebuggerPath": "/usr/bin/gdb"
+            },
+            {
+                "name": "Create Chord Node",
+                "type": "cppdbg",
+                "request": "launch",
+                "program": "${workspaceFolder}/chord",
+                "args": [
+                    "-p",
+                    "4170",
+                    "--sp",
+                    "60",
+                    "--ffp",
+                    "60",
+                    "--cpp",
+                    "60",
+                    "-r",
+                    "4"
+                ],
+                "stopAtEntry": false,
+                "cwd": "${workspaceFolder}",
+                "environment": [],
+                "MIMode": "gdb",
+                "setupCommands": [
+                    {
+                        "description": "Enable pretty-printing for gdb",
+                        "text": "-enable-pretty-printing",
+                        "ignoreFailures": true
+                    }
+                ],
+                "preLaunchTask": "Make a4",
+                "miDebuggerPath": "/usr/bin/gdb"
+            },
+
+            {
+                "name": "Join Chord Node",
+                "type": "cppdbg",
+                "request": "launch",
+                "program": "${workspaceFolder}/chord",
+                "args": [
+                    "-p",
+                    "4171",
+                    "--ja",
+                    "172.17.0.2",
+                    "--jp",
+                    "4170",
+                    "--sp",
+                    "60",
+                    "--ffp",
+                    "60",
+                    "--cpp",
+                    "60",
+                    "-r",
+                    "4"
+                ],
+                "stopAtEntry": false,
+                "cwd": "${workspaceFolder}",
+                "environment": [],
+                "MIMode": "gdb",
+                "setupCommands": [
+                    {
+                        "description": "Enable pretty-printing for gdb",
+                        "text": "-enable-pretty-printing",
+                        "ignoreFailures": true
+                    }
+                ],
+                "preLaunchTask": "Make a4",
+                "miDebuggerPath": "/usr/bin/gdb"
+            },
         ]
     }

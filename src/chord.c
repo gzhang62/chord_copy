@@ -14,7 +14,7 @@
 
 struct sha1sum_ctx *ctx;
 
-Callback callback_array[RAND_MAX];
+Callback callback_array[1024];
 AddressTable *address_table;
 
 
@@ -31,6 +31,7 @@ int main(int argc, char *argv[]) {
 	int num_clients = 0;
 	int clients[MAX_CLIENTS]; // keep track of fds, if fd is present, fds[i] = 1 else fds[i] = 0
 	int server_fd;
+	uint8_t *hash = malloc(20);
 	/* Select variables */
 	int maxfd = 0;
 	fd_set readset;
@@ -57,6 +58,24 @@ int main(int argc, char *argv[]) {
 	UNUSED(cpret);
 	UNUSED(ffret);
 	UNUSED(spret);
+
+
+	// set n
+	n.port = chord_args.my_address.sin_port;
+	n.address = chord_args.my_address.sin_addr.s_addr;
+	ctx = sha1sum_create(NULL, 0);
+	sha1sum_update(ctx, (u_int8_t*)&n.address, sizeof(uint32_t));
+	sha1sum_finish(ctx, (u_int8_t*)&n.port, sizeof(uint32_t), hash);
+	n.key = sha1sum_truncated_head(hash);
+
+	// node is being created
+	if(chord_args.join_address.sin_port == 0) {
+		// TODO: better mechanism for detecting created vs joining
+		create();
+	} else {
+		// node is joining
+		join(chord_args.join_address);
+	}
 
 	for(;;) {
 		timeout.tv_sec = 1;
@@ -93,7 +112,6 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	ctx = sha1sum_create(NULL, 0);
 	printf("> "); // indicate we're waiting for user input
 	return 0;
 }
@@ -567,11 +585,24 @@ int handle_connection(int sd) {
 // Add/removing nodes //
 ////////////////////////
 
+int create() {
+	predecessor = NULL;
+	successors[0] = &n;
+	return 0;
+}
+
 //TODO
-int join(Node *nprime) {
-	UNUSED(nprime);
+int join(struct sockaddr_in join_addr) {
+	predecessor = NULL;
+	Node temp_succ;
+	temp_succ.address = join_addr.sin_addr.s_addr;
+	temp_succ.port = join_addr.sin_port;
+	successors[0] = &temp_succ;
+	send_find_successor_request(n.key + 1, 2, 0);
+	// TODO: modify to find successor list vs first successor
 	return -1;
 }
+
 
 void callback_join(Node *node, int arg) {
 	//TODO Which successor?
@@ -604,8 +635,16 @@ int stabilize() {
 
 //TODO
 int notify(Node *nprime) {
-	UNUSED(nprime);
-	return -1;
+	ChordMessage message;
+	NotifyRequest request;
+	int successor_socket = get_socket(nprime);
+	chord_message__init(&message);
+	notify_request__init(&request);
+	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_REQUEST;		
+	request.node = &n;
+	message.notify_request = &request;
+	send_message(successor_socket, &message);
+	return 0;
 }
 
 /**
@@ -678,8 +717,8 @@ void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
 	if(check_time(&last_stabilize, sp)) {
 		// stabilize()
-		printf("Stabilize\n");
-		fflush(stdout);
+		// printf("Stabilize\n");
+		// fflush(stdout);
 		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function above
 	}
 
@@ -687,8 +726,8 @@ void check_periodic(int cpp, int ffp, int sp) {
 		// we have no ongoing check predecessor
 		if(check_time(&last_check_predecessor, cpp)) {
 			// check_predecessor()
-			printf("Check Predecessor\n");
-			fflush(stdout);
+			// printf("Check Predecessor\n");
+			// fflush(stdout);
 			clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
 		}
 	} else {
@@ -700,8 +739,8 @@ void check_periodic(int cpp, int ffp, int sp) {
 
 	if(check_time(&last_fix_fingers, ffp)) {
 		// fix_fingers()
-		printf("Fix fingers\n");
-		fflush(stdout);
+		// printf("Fix fingers\n");
+		// fflush(stdout);
 		clock_gettime(CLOCK_REALTIME, &last_fix_fingers); // should go into function above
 	}
 }
