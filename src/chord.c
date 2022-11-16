@@ -7,14 +7,11 @@
 #include <math.h>
 #include <fcntl.h> // for open
 #include <unistd.h> // for close
-
 #include "chord_arg_parser.h"
 #include "chord.h"
 #include "hash.h"
+#include "queue.h"
 
-struct sha1sum_ctx *ctx;
-
-Callback callback_array[1024];
 AddressTable *address_table;
 
 int num_clients;
@@ -33,7 +30,6 @@ int main(int argc, char *argv[]) {
 	num_clients = 0;
 
 	int server_fd;
-	uint8_t *hash = malloc(20);
 	/* Select variables */
 	int maxfd = 0;
 	fd_set readset;
@@ -42,8 +38,8 @@ int main(int argc, char *argv[]) {
 	struct chord_arguments chord_args = chord_parseopt(argc, argv);
 	// uint8_t num_successors = chord_args.num_successors;
 	struct sockaddr_in my_address = chord_args.my_address;
-	// struct sockaddr_in join_address = chord_args.join_address;
-	num_successors = chord_args.num_successors;
+	struct sockaddr_in join_address = chord_args.join_address;
+	UNUSED(join_address);
 	/* timeout values in seconds */
 	int cpp = chord_args.check_predecessor_period;
 	int ffp = chord_args.fix_fingers_period;
@@ -53,23 +49,8 @@ int main(int argc, char *argv[]) {
 	FD_ZERO(&readset);	// zero out readset
 	FD_SET(server_fd, &readset);	// add server_fd
 	FD_SET(0, &readset);	// add stdin
-	
-	int cpret = clock_gettime(CLOCK_REALTIME, &last_check_predecessor);
-	int ffret = clock_gettime(CLOCK_REALTIME, &last_fix_fingers);
-	int spret = clock_gettime(CLOCK_REALTIME, &last_stabilize);
-	UNUSED(cpret);
-	UNUSED(ffret);
-	UNUSED(spret);
 
-
-	// set n
-	n.port = chord_args.my_address.sin_port;
-	n.address = chord_args.my_address.sin_addr.s_addr;
-	ctx = sha1sum_create(NULL, 0);
-	sha1sum_update(ctx, (u_int8_t*)&n.address, sizeof(uint32_t));
-	sha1sum_finish(ctx, (u_int8_t*)&n.port, sizeof(uint32_t), hash);
-	n.key = sha1sum_truncated_head(hash);
-
+	init_global(chord_args);
 	// node is being created
 	if(chord_args.join_address.sin_port == 0) {
 		// TODO: better mechanism for detecting created vs joining
@@ -113,6 +94,28 @@ int main(int argc, char *argv[]) {
 
 	printf("> "); // indicate we're waiting for user input
 	return 0;
+}
+
+void init_global(struct chord_arguments chord_args) {
+	uint8_t *hash = malloc(20);
+	int cpret = clock_gettime(CLOCK_REALTIME, &last_check_predecessor);
+	int ffret = clock_gettime(CLOCK_REALTIME, &last_fix_fingers);
+	int spret = clock_gettime(CLOCK_REALTIME, &last_stabilize);
+	UNUSED(cpret);
+	UNUSED(ffret);
+	UNUSED(spret);
+	// set num_successors
+	num_successors = chord_args.num_successors;
+	// set n
+	n.port = chord_args.my_address.sin_port;
+	n.address = chord_args.my_address.sin_addr.s_addr;
+	ctx = sha1sum_create(NULL, 0);
+	sha1sum_update(ctx, (u_int8_t*)&n.address, sizeof(uint32_t));
+	sha1sum_finish(ctx, (u_int8_t*)&n.port, sizeof(uint32_t), hash);
+	n.key = sha1sum_truncated_head(hash);
+	// initialize callback
+	InitDQ(callback_list, Callback);
+	assert(callback_list);
 }
 
 /**
@@ -246,13 +249,15 @@ int send_message(int sd, ChordMessage *message) {
 	int amount_sent;
 	//message->version = 417;
 
+	// TODO: Check if sd is -1;
 	// Pack and send message
-	int64_t len = htobe64(chord_message__get_packed_size(message));
+	int64_t len = chord_message__get_packed_size(message);
 	void *buffer = malloc(len);
 	chord_message__pack(message, buffer);
 
 	// First send length, then send message
-	amount_sent = send(sd, &len, sizeof(len), 0);
+	int64_t belen = htobe64(len); 
+	amount_sent = send(sd, &belen, sizeof(len), 0);
 	assert(amount_sent == sizeof(len));
 
 	amount_sent = send(sd, buffer, len, 0);
@@ -368,36 +373,48 @@ void connect_send_find_successor_response(Node *original_node, uint32_t query_id
 /**
  * Create and assign the callback into the array.
  * @author Adam
+ * @author Gary
  * @return The location of the callback in the callback_array (query id)
  */
 int add_callback(CallbackFunction func, int arg) {
-	Callback callback = {func, arg};
 	int query_id = rand();
-	callback_array[query_id] = callback;
+	struct Callback callback = {NULL, NULL, func, query_id, arg};
+	struct Callback *cb_ptr = &callback;
+	InsertDQ(callback_list, cb_ptr);
 	printf("Added %d, args %d -> query_id %d\n", func, arg, query_id);
 	return query_id;
 }
 
+/**
+ * @author Adam
+ * @author Gary
+ */
 int do_callback(ChordMessage *message) {
 	assert(message->has_query_id);
-	Callback callback = callback_array[message->query_id];
+	struct Callback *curr;
+	// find callback
+	for(curr = callback_list->next; curr != callback_list; curr = curr->next) {
+		if(curr->query_id == message->query_id) {
+			break;
+		}
+	}
 	Node *node = message->find_successor_response->node;
-	switch(callback.func) {
+	switch(curr->func) {
 		case CALLBACK_PRINT_LOOKUP: ;
 			callback_print_lookup(node);
 			break;
 		case CALLBACK_JOIN: ;
 			// Set successors[callback.arg] to the given node
-			callback_join(node, callback.arg);	
+			callback_join(node, curr->arg);	
 			break;
 		case CALLBACK_FIX_FINGERS: ;
-			callback_fix_fingers(node, callback.arg);
+			callback_fix_fingers(node, curr->arg);
 			break;
 		default: ;
 			exit_error("Callback provided with unknown function enum");
 	}
 	
-	// Remove from callback array
+	// TODO: Remove from callback array
 	//callback_array[message->query_id];
 	return 0;
 }
@@ -603,7 +620,7 @@ int handle_connection(int sd) {
  */
 
 //TODO
-int join(Node *nprime) {
+int join_node(Node *nprime) {
 	// Assumes the key is already set in the node. 
 	int nprime_sd = get_socket(nprime);
 	send_find_successor_request_socket(nprime_sd, n.key, CALLBACK_JOIN, 0);
@@ -623,6 +640,7 @@ int join(struct sockaddr_in join_addr) {
 	temp_succ.address = join_addr.sin_addr.s_addr;
 	temp_succ.port = join_addr.sin_port;
 	successors[0] = &temp_succ;
+	add_socket(&temp_succ);
 	send_find_successor_request(n.key + 1, 2, 0);
 	// TODO: modify to find successor list vs first successor
 	return -1;
@@ -767,26 +785,29 @@ void check_periodic(int cpp, int ffp, int sp) {
  * Add to global address to socket mapping
  * @author Gary
  * @param n_prime Node whose address we want to map to a socket
+ * @return new socket or existing socket
  */
 int add_socket(Node *n_prime) {
 	struct sockaddr_in addr;
 	int new_sock;
-	// set up address
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = (unsigned short) htonl(n_prime->port);
-	addr.sin_addr.s_addr = n_prime->address;
-	// create a new socket
-	if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
-		exit_error("Could not make socket");
+	int sd = get_socket(n_prime);
+	if(sd != -1) {
+		// socket already exists return it
+		return sd;
+	} else {
+		// create a new socket
+		if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+			exit_error("Could not make socket");
+		}
+		// connect new socket to peer
+		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(struct sockaddr *)) != 0) {
+			exit_error("Could not connect with peer");
+		}	
+		add_socket_to_array(new_sock);
 	}
-	// connect new socket to peer
-	if(connect(new_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-		exit_error("Could not connect with peer");
-	}
-	add_socket_to_array(new_sock);
 	return new_sock;
 }
+
 
 /**
  * Add to global address to socket mapping

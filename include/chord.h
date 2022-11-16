@@ -33,10 +33,21 @@ typedef struct Message
  */
 void printKey(uint64_t key);
 
+/* Global Variables */
 Node n; // initialize on creation of node
 Node *predecessor;
 Node *successors[MAX_SUCCESSORS];
 Node *finger[NUM_BYTES_IDENTIFIER];
+
+/* Timestamps for periodic update variables*/
+struct timespec last_check_predecessor;
+struct timespec last_fix_fingers;
+struct timespec last_stabilize;
+
+struct timespec wait_check_predecessor= {0, 0}; // 0 when there is no check predecessor request going on
+
+struct sha1sum_ctx *ctx;
+struct Callback *callback_list;
 
 uint64_t get_node_hash(Node *n);
 uint64_t get_hash(char *buffer);
@@ -63,8 +74,11 @@ typedef enum {
  * If == CALLBACK_JOIN or CALLBACK_FIX_FINGERS, arg indicates the index 
  * into successors[] or finger[] (respectively) we want to update
  */
-typedef struct _Callback {
+typedef struct Callback {
+    struct Callback *next;
+    struct Callback *prev;
     CallbackFunction func;
+    int32_t query_id;
     int arg;
 } Callback;
 
@@ -79,8 +93,8 @@ void receive_successor_response(int sd, ChordMessage *message);
 Node *closest_preceding_node(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
-
-
+// init callback linked list, node n
+void init_global(struct chord_arguments chord_args);
 int create();
 int join(struct sockaddr_in join_addr);
 void callback_join(Node *node, int arg);
@@ -123,14 +137,6 @@ int check_time(struct timespec *last_time, int timeout);
 void exit_error(char * error_message);
 // check periodic timers
 void check_periodic();
-
-/* Timestamps for periodic update variables*/
-struct timespec last_check_predecessor;
-struct timespec last_fix_fingers;
-struct timespec last_stabilize;
-
-struct timespec wait_check_predecessor= {0, 0}; // 0 when there is no check predecessor request going on
-
 
 // Stateful functions
 int add_callback(CallbackFunction func, int arg); 
