@@ -11,12 +11,9 @@
 #include "chord_arg_parser.h"
 #include "chord.h"
 #include "hash.h"
+#include "queue.h"
 
-struct sha1sum_ctx *ctx;
-
-Callback callback_array[1024];
 AddressTable *address_table;
-
 
 // Num successors
 uint8_t num_successors;
@@ -31,7 +28,6 @@ int main(int argc, char *argv[]) {
 	int num_clients = 0;
 	int clients[MAX_CLIENTS]; // keep track of fds, if fd is present, fds[i] = 1 else fds[i] = 0
 	int server_fd;
-	uint8_t *hash = malloc(20);
 	/* Select variables */
 	int maxfd = 0;
 	fd_set readset;
@@ -40,8 +36,8 @@ int main(int argc, char *argv[]) {
 	struct chord_arguments chord_args = chord_parseopt(argc, argv);
 	// uint8_t num_successors = chord_args.num_successors;
 	struct sockaddr_in my_address = chord_args.my_address;
-	// struct sockaddr_in join_address = chord_args.join_address;
-	num_successors = chord_args.num_successors;
+	struct sockaddr_in join_address = chord_args.join_address;
+	UNUSED(join_address);
 	/* timeout values in seconds */
 	int cpp = chord_args.check_predecessor_period;
 	int ffp = chord_args.fix_fingers_period;
@@ -51,22 +47,6 @@ int main(int argc, char *argv[]) {
 	FD_ZERO(&readset);	// zero out readset
 	FD_SET(server_fd, &readset);	// add server_fd
 	FD_SET(0, &readset);	// add stdin
-	
-	int cpret = clock_gettime(CLOCK_REALTIME, &last_check_predecessor);
-	int ffret = clock_gettime(CLOCK_REALTIME, &last_fix_fingers);
-	int spret = clock_gettime(CLOCK_REALTIME, &last_stabilize);
-	UNUSED(cpret);
-	UNUSED(ffret);
-	UNUSED(spret);
-
-
-	// set n
-	n.port = chord_args.my_address.sin_port;
-	n.address = chord_args.my_address.sin_addr.s_addr;
-	ctx = sha1sum_create(NULL, 0);
-	sha1sum_update(ctx, (u_int8_t*)&n.address, sizeof(uint32_t));
-	sha1sum_finish(ctx, (u_int8_t*)&n.port, sizeof(uint32_t), hash);
-	n.key = sha1sum_truncated_head(hash);
 
 	// node is being created
 	if(chord_args.join_address.sin_port == 0) {
@@ -114,6 +94,28 @@ int main(int argc, char *argv[]) {
 
 	printf("> "); // indicate we're waiting for user input
 	return 0;
+}
+
+void init_global(struct chord_arguments chord_args) {
+	uint8_t *hash = malloc(20);
+	int cpret = clock_gettime(CLOCK_REALTIME, &last_check_predecessor);
+	int ffret = clock_gettime(CLOCK_REALTIME, &last_fix_fingers);
+	int spret = clock_gettime(CLOCK_REALTIME, &last_stabilize);
+	UNUSED(cpret);
+	UNUSED(ffret);
+	UNUSED(spret);
+	// set num_successors
+	num_successors = chord_args.num_successors;
+	// set n
+	n.port = chord_args.my_address.sin_port;
+	n.address = chord_args.my_address.sin_addr.s_addr;
+	ctx = sha1sum_create(NULL, 0);
+	sha1sum_update(ctx, (u_int8_t*)&n.address, sizeof(uint32_t));
+	sha1sum_finish(ctx, (u_int8_t*)&n.port, sizeof(uint32_t), hash);
+	n.key = sha1sum_truncated_head(hash);
+	// initialize callback
+	InitDQ(callback_list, struct Callback);
+	assert(callback_list);
 }
 
 /**
@@ -371,33 +373,40 @@ void connect_send_find_successor_response(Node *original_node, uint32_t query_id
  * @return The location of the callback in the callback_array (query id)
  */
 int add_callback(CallbackFunction func, int arg) {
-	Callback callback = {func, arg};
 	int query_id = rand();
-	callback_array[query_id] = callback;
+	struct Callback callback = {NULL, NULL, func, query_id, arg};
+	struct Callback *cb_ptr = &callback;
+	InsertDQ(callback_list, cb_ptr);
 	printf("Added %d, args %d -> query_id %d\n", func, arg, query_id);
 	return query_id;
 }
 
 int do_callback(ChordMessage *message) {
 	assert(message->has_query_id);
-	Callback callback = callback_array[message->query_id];
+	struct Callback *curr;
+	// find callback
+	for(curr = callback_list->next; curr != callback_list; curr = curr->next) {
+		if(curr->query_id == message->query_id) {
+			break;
+		}
+	}
 	Node *node = message->find_successor_response->node;
-	switch(callback.func) {
+	switch(curr->func) {
 		case CALLBACK_PRINT_LOOKUP: ;
 			callback_print_lookup(node);
 			break;
 		case CALLBACK_JOIN: ;
 			// Set successors[callback.arg] to the given node
-			callback_join(node, callback.arg);	
+			callback_join(node, curr->arg);	
 			break;
 		case CALLBACK_FIX_FINGERS: ;
-			callback_fix_fingers(node, callback.arg);
+			callback_fix_fingers(node, curr->arg);
 			break;
 		default: ;
 			exit_error("Callback provided with unknown function enum");
 	}
 	
-	// Remove from callback array
+	// TODO: Remove from callback array
 	//callback_array[message->query_id];
 	return 0;
 }
