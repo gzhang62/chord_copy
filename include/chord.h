@@ -82,8 +82,7 @@ Node **get_successor_list(); //TODO unsure if this is the best output format
 
 
 int create();
-
-int join(Node *nprime);
+int join(struct sockaddr_in join_addr);
 void callback_join(Node *node, int arg);
 
 int stabilize();
