@@ -79,6 +79,8 @@ void receive_successor_response(int sd, ChordMessage *message);
 Node *closest_preceding_node(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
+
+
 int create();
 int join(struct sockaddr_in join_addr);
 void callback_join(Node *node, int arg);
@@ -94,13 +96,12 @@ int check_predecessor();
 
 
 // Node interactions
-
 int read_process_node(int sd);                      // node fds
 int read_process_input(FILE *fd);                   // stdin fd
 int send_message(int sd, ChordMessage *message);    
 ChordMessage *receive_message(int sd);
 
-void send_find_successor_request(uint64_t id, CallbackFunction func, int arg);
+void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg);
 void connect_send_find_successor_response(Node *original_node, uint32_t query_id);
 
 ChordMessage *smessage(int sd);
@@ -132,7 +133,6 @@ struct timespec wait_check_predecessor= {0, 0}; // 0 when there is no check pred
 
 
 // Stateful functions
-
 int add_callback(CallbackFunction func, int arg); 
 int do_callback(ChordMessage *message);
 
