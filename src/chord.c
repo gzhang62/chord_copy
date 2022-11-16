@@ -275,15 +275,28 @@ ChordMessage *receive_message(int sd) {
 }
 
 /**
+ * Start the successor 
+ * @author Adam 
+ * @param id ID which we are looking for
+ * @param func the callback function that we're doing
+ * @param arg the argument for the callback function
+ */
+void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
+	// TODO try other successors
+	int successor_sd = get_socket(successors[0]);
+	send_find_successor_request_socket(successor_sd, id, func, arg);
+}
+
+/**
  * Construct and send the *initial* ChordMessage FindSuccessorRequest.
  * The result will be caught in receive_find_successor_request.
  * @author Adam
+ * @param sd Socket we send to
  * @param id ID which we are looking for
+ * @param func the callback function that we're doing
+ * @param arg the argument for the callback function
  */
-void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
-
-	// TODO try other successors
-	int successor_sd = get_socket(successors[0]);
+void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg) {
 
 	// Add a callback which will be referenced when we receive a final response
 	int query_id = add_callback(func, arg);
@@ -301,7 +314,7 @@ void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	message.has_query_id = true;
 	message.query_id = query_id;
 
-	send_message(successor_sd, &message);
+	send_message(sd, &message);
 }
 
 /**
@@ -570,6 +583,8 @@ int handle_connection(int sd) {
 //TODO
 int join(Node *nprime) {
 	UNUSED(nprime);
+	// Assumes the key is already set in the node. 
+	send_find_successor_request(n.key, CALLBACK_JOIN, 0);
 	return -1;
 }
 
