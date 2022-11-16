@@ -7,7 +7,6 @@
 #include <math.h>
 #include <fcntl.h> // for open
 #include <unistd.h> // for close
-
 #include "chord_arg_parser.h"
 #include "chord.h"
 #include "hash.h"
@@ -48,6 +47,7 @@ int main(int argc, char *argv[]) {
 	FD_SET(server_fd, &readset);	// add server_fd
 	FD_SET(0, &readset);	// add stdin
 
+	init_global(chord_args);
 	// node is being created
 	if(chord_args.join_address.sin_port == 0) {
 		// TODO: better mechanism for detecting created vs joining
@@ -247,14 +247,15 @@ Node **get_successor_list() {
  */
 int send_message(int sd, ChordMessage *message) {
 	int amount_sent;
-
+	// TODO: Check if sd is -1;
 	// Pack and send message
-	int64_t len = htobe64(chord_message__get_packed_size(message));
+	int64_t len = chord_message__get_packed_size(message);
 	void *buffer = malloc(len);
 	chord_message__pack(message, buffer);
 
 	// First send length, then send message
-	amount_sent = send(sd, &len, sizeof(len), 0);
+	int64_t belen = htobe64(len); 
+	amount_sent = send(sd, &belen, sizeof(len), 0);
 	assert(amount_sent == sizeof(len));
 
 	amount_sent = send(sd, buffer, len, 0);
@@ -620,6 +621,7 @@ int join(struct sockaddr_in join_addr) {
 	temp_succ.address = join_addr.sin_addr.s_addr;
 	temp_succ.port = join_addr.sin_port;
 	successors[0] = &temp_succ;
+	add_socket(&temp_succ);
 	send_find_successor_request(n.key + 1, 2, 0);
 	// TODO: modify to find successor list vs first successor
 	return -1;
@@ -791,32 +793,41 @@ int get_socket(Node *nprime) {
  * Add to global address to socket mapping
  * @author Gary
  * @param n_prime Node whose address we want to map to a socket
+ * @return new socket or existing socket
  */
 int add_socket(Node *n_prime) {
 	struct sockaddr_in addr;
 	int new_sock;
-	AddressTable *a;
+	AddressTable *ret;
 	// set up address
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = (unsigned short) htonl(n_prime->port);
-	addr.sin_addr.s_addr = n_prime->address;
-	// create a new socket
-	if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
-		exit_error("Could not make socket");
+	addr.sin_port = htons((unsigned short) n_prime->port);
+	addr.sin_addr.s_addr = htonl(n_prime->address);
+
+	HASH_FIND_PTR(address_table, &addr, ret);
+	if(ret) {
+		// socket already exists return it
+		return ret->sd;
+	} else {
+		// create a new socket
+		if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
+			exit_error("Could not make socket");
+		}
+		// connect new socket to peer
+		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(struct sockaddr *)) != 0) {
+			exit_error("Could not connect with peer");
+		}
+		// set up new AddressTable entry
+		ret = (AddressTable *) malloc(sizeof *ret);
+		ret->address = addr;
+		ret->sd = new_sock;
+		// add mapping to global hash map
+		HASH_ADD(hh, address_table, address, sizeof(struct sockaddr_in), ret);
+		return new_sock;
 	}
-	// connect new socket to peer
-	if(connect(new_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-		exit_error("Could not connect with peer");
-	}
-	// set up new AddressTable entry
-	a = (AddressTable *) malloc(sizeof *a);
-	a->address = addr;
-	a->sd = new_sock;
-	// add mapping to global hash map
-	HASH_ADD(hh, address_table, address, sizeof(struct sockaddr_in), a);
-	return new_sock;
 }
+
 
 /**
  * Add to global address to socket mapping
@@ -829,8 +840,8 @@ int delete_socket(Node *n_prime) {
 	// set addr
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = (unsigned short) htonl(n_prime->port);
-	addr.sin_addr.s_addr = n_prime->address;
+	addr.sin_port = htons((unsigned short) n_prime->port);
+	addr.sin_addr.s_addr = htonl(n_prime->address);
 	HASH_FIND_PTR(address_table, &addr, ret);
 	if(ret) {
 		// address was found remove it
