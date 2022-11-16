@@ -140,3 +140,6 @@ int do_callback(ChordMessage *message);
 int add_socket(Node *nprime);
 int get_socket(Node *nprime);
 int delete_socket(Node *nprime);
+
+int add_socket_to_array(int sd);
+int delete_socket_from_array(int sd);
