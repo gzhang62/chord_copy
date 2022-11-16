@@ -52,14 +52,14 @@ typedef struct _AddressTable {
 
 typedef enum {
     CALLBACK_NONE = 0,
-    CALLBACK_FIND_SUCCESSOR = 1,
+    CALLBACK_PRINT_LOOKUP = 1,
     CALLBACK_JOIN = 2,
     CALLBACK_FIX_FINGERS = 3
 } CallbackFunction;
 
 /**
  * Define what we want to do with the data after receiving a response.
- * If func == CALLBACK_FIND_SUCCESSOR or CALLBACK_NONE, arg is ignored
+ * If func == CALLBACK_PRINT_LOOKUP or CALLBACK_NONE, arg is ignored
  * If == CALLBACK_JOIN or CALLBACK_FIX_FINGERS, arg indicates the index 
  * into successors[] or finger[] (respectively) we want to update
  */
@@ -73,34 +73,42 @@ typedef struct _Callback {
 uint64_t get_node_hash(Node *nprime);
 uint64_t get_hash(char *buffer);
 
-Node *receive_successor_request(int sd, ChordMessage *message);
-Node *receive_successor_response(int sd, ChordMessage *message);
+void receive_successor_request(int sd, ChordMessage *message);
+void receive_successor_response(int sd, ChordMessage *message);
 
 Node *closest_preceding_node(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
 int create();
+
 int join(Node *nprime);
+void callback_join(Node *node, int arg);
+
 int stabilize();
+
 int notify(Node *nprime);
+
 int fix_fingers();
+void callback_fix_fingers(Node *node, int arg);
+
 int check_predecessor();
+
 
 // Node interactions
 
 int read_process_node(int sd);                      // node fds
 int read_process_input(FILE *fd);                   // stdin fd
 int send_message(int sd, ChordMessage *message);    
-
-void send_find_successor_request(int sd, int id, int query_id);
-void send_find_successor_response(int sd, Node *nprime, int query_id);
-void connect_send_find_successor_response(Node *original_node, Node *node_to_send, int query_id);
-
 ChordMessage *receive_message(int sd);
+
+void send_find_successor_request(uint64_t id, CallbackFunction func, int arg);
+void connect_send_find_successor_response(Node *original_node, uint32_t query_id);
+
+ChordMessage *smessage(int sd);
 
 int lookup(char *key);
 int print_state();
-int print_lookup_line(Node *result);
+int callback_print_lookup(Node *result);
 
 // Other
 Node *copy_node(Node *nprime);
