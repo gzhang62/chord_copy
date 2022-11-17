@@ -12,6 +12,17 @@
 #include "hash.h"
 #include "queue.h"
 
+#define VERBOSE true
+
+void LOG(const char *template, ...){
+  if (VERBOSE) { 
+	va_list ap;
+	va_start (ap, template);
+	vfprintf (stderr, template, ap);
+	va_end (ap);
+  }
+}
+
 int num_clients;
 int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds[i] = 1 else fds[i] = 0
 char address_buffer[80]; // for displaying object
@@ -75,7 +86,7 @@ int main(int argc, char *argv[]) {
 		if(ret == -1) {
 			// error
 		} else if(ret) {
-			printf("selected\n");
+			LOG("selected\n");
 			if(FD_ISSET(server_fd, &readset)) {
 				// handle a new connection
 				int client_socket = handle_connection(server_fd);
@@ -91,7 +102,7 @@ int main(int argc, char *argv[]) {
 			for(int i = 0; i < MAX_CLIENTS; i++) {
 				if(clients[i] != 0 && FD_ISSET(clients[i], &readset)) {
 					// process client
-					printf("process node %d\n",clients[i]);
+					LOG("process node %d\n",clients[i]);
 					read_process_node(clients[i]);
 				}
 			}
@@ -136,7 +147,7 @@ int read_process_node(int sd)	{
 	int return_value = -1;
 
 	ChordMessage *message = receive_message(sd);
-	printf("Receive message from %d\n",sd);
+	LOG("Receive message from %d\n",sd);
 	// Decide what to do based on message case
 	switch(message->msg_case) {
 		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
@@ -273,7 +284,7 @@ int send_message(int sd, ChordMessage *message) {
 	assert(amount_sent == len);
 
 	free(buffer);
-	printf("Sent message [socket %d] \n",sd);
+	LOG("Sent message [socket %d] \n",sd);
 	return 0;
 }
 
@@ -317,7 +328,7 @@ ChordMessage *receive_message(int sd) {
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	// TODO try other successors
 	int successor_sd = get_socket(successors[0]);
-	printf("Send Find Succ Request(id: %" PRIu64 ", callback %d[%d]\n",id,func,arg);
+	LOG("Send Find Succ Request(id: %" PRIu64 ", callback %d[%d]\n",id,func,arg);
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
@@ -392,7 +403,7 @@ int add_callback(CallbackFunction func, int arg) {
 	struct Callback callback = {NULL, NULL, func, query_id, arg};
 	struct Callback *cb_ptr = &callback;
 	InsertDQ(callback_list, cb_ptr);
-	printf("Added %d, args %d -> query_id %d\n", func, arg, query_id);
+	LOG("Added %d, args %d -> query_id %d\n", func, arg, query_id);
 	return query_id;
 }
 
@@ -410,7 +421,7 @@ int do_callback(ChordMessage *message) {
 		}
 	}
 	Node *node = message->find_successor_response->node;
-	printf("callback %d, args %d",curr->func,curr->arg);
+	LOG("callback %d, args %d",curr->func,curr->arg);
 	switch(curr->func) {
 		case CALLBACK_PRINT_LOOKUP: ;
 			callback_print_lookup(node);
@@ -617,11 +628,11 @@ int setup_server(int server_port) {
  * @return new client socket
  */
 int handle_connection(int sd) {
-	printf("taking connection from %d\n",sd);
+	LOG("taking connection from %d\n",sd);
 	struct sockaddr_in client_address;
 	socklen_t len = sizeof(client_address);
 	int client_fd = accept(sd, (struct sockaddr *)&client_address, &len);
-	printf("handled connection: {%s}",display_address(client_address));
+	LOG("handled connection: {%s}",display_address(client_address));
 	return client_fd;
 }
 
@@ -643,7 +654,7 @@ int join_node(Node *nprime) {
 }
 
 int create() {
-	printf("creating node...\n");
+	LOG("creating node...\n");
 	predecessor = NULL;
 	successors[0] = &n;
 	return 0;
@@ -651,7 +662,7 @@ int create() {
 
 //TODO
 int join(struct sockaddr_in join_addr) {
-	printf("join to {%s}\n",display_address(join_addr));
+	LOG("join to {%s}\n",display_address(join_addr));
 	predecessor = NULL;
 	Node temp_succ;
 	temp_succ.address = join_addr.sin_addr.s_addr;
@@ -822,12 +833,12 @@ int add_socket(Node *n_prime) {
 		if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
 			exit_error("Could not make socket");
 		}
-		printf("socket made [socket %d]\n",new_sock);
+		LOG("socket made [socket %d]\n",new_sock);
 		// connect new socket to peer
 		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
 			exit_error("Could not connect with peer");
 		}	
-		printf("connection made {%s}\n",display_address(addr));
+		LOG("connection made {%s}\n",display_address(addr));
 		add_socket_to_array(new_sock);
 	}
 	return new_sock;
