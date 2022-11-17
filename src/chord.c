@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <time.h>
 #include <stdint.h>
@@ -60,9 +61,6 @@ int main(int argc, char *argv[]) {
 	int sp = chord_args.stablize_period;
 
 	server_fd = setup_server(my_address.sin_port);
-	FD_ZERO(&readset);				// zero out readset
-	FD_SET(server_fd, &readset);	// add server_fd
-	FD_SET(0, &readset);			// add stdin
 
 	init_global(chord_args);
 	//printf("%d:%d\n",chord_args.join_address.sin_addr.s_addr,chord_args.join_address.sin_port);
@@ -78,6 +76,20 @@ int main(int argc, char *argv[]) {
 	printf("> "); // indicate we're waiting for user input
 
 	for(;;) {
+		FD_ZERO(&readset);				// zero out readset
+		FD_SET(server_fd, &readset);	// add server_fd
+		FD_SET(0, &readset);			// add stdin
+		maxfd = server_fd;
+
+		for(int i = 0; i < MAX_CLIENTS; i++) {
+			if(clients[i] == 0) {
+				break;
+			}
+			if(clients[i] > maxfd) {
+				maxfd = clients[i];
+			}
+			FD_SET(clients[i], &readset); 
+		}
 		timeout.tv_sec = 1;
 		timeout.tv_usec = 0;
 		int ret = select(maxfd + 1, &readset, NULL, NULL, &timeout);
