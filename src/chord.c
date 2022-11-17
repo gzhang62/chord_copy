@@ -9,6 +9,7 @@
 #include <math.h>
 #include <fcntl.h> // for open
 #include <unistd.h> // for close
+
 #include "chord_arg_parser.h"
 #include "chord.h"
 #include "hash.h"
@@ -39,6 +40,7 @@ uint8_t num_successors;
  * variable `address_string_buffer`, and return its address.
  */
 char *display_address(struct sockaddr_in address) {
+	memset(address_string_buffer,0,sizeof(address_string_buffer));
 	sprintf(address_string_buffer, "%s %d", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
 	return address_string_buffer;
 }
@@ -59,6 +61,7 @@ void node_to_address(Node *node, struct sockaddr_in *out_sockaddr) {
  * variable `node_string_buffer`, and return its address.
  */
 char *display_node(Node *node) {
+	memset(node_string_buffer,0,sizeof(node_string_buffer));
 	struct sockaddr_in addr;
 	node_to_address(node, &addr);
 	sprintf(node_string_buffer, "%" PRIu64 " %s", node->key, display_address(addr));
@@ -316,9 +319,11 @@ int send_message(int sd, ChordMessage *message) {
 	// First send length, then send message
 	int64_t belen = htobe64(len); 
 	amount_sent = send(sd, &belen, sizeof(len), 0);
+	LOG("Sent %d, tried to send %ld\n", amount_sent, sizeof(len));
 	assert(amount_sent == sizeof(len));
 
 	amount_sent = send(sd, buffer, len, 0);
+	LOG("Sent %d, tried to send %ld\n", amount_sent, len);
 	assert(amount_sent == len);
 
 	free(buffer);
@@ -339,6 +344,7 @@ ChordMessage *receive_message(int sd) {
 	// Read size of message
 	uint64_t message_size;
 	amount_read = read(sd, &message_size, sizeof(message_size));
+	LOG("Received %d, expected %ld\n",amount_read, sizeof(message_size));
 	assert((unsigned long) amount_read == sizeof(message_size));
 	// Fix endianness
 	message_size = be64toh(message_size);
@@ -346,6 +352,7 @@ ChordMessage *receive_message(int sd) {
 	// Read actual message
 	void *buffer = malloc(message_size);
 	amount_read = read(sd, buffer, message_size);
+	printf("Received %d, expected %ld\n",amount_read, message_size);
 	assert((unsigned long) amount_read == message_size);
 
 	// Unpack message
@@ -682,7 +689,7 @@ int handle_connection(int sd) {
 	struct sockaddr_in client_address;
 	socklen_t len = sizeof(client_address);
 	int client_fd = accept(sd, (struct sockaddr *)&client_address, &len);
-	LOG("handled connection: {%s}",display_address(client_address));
+	LOG("handled connection: {%s}\n", display_address(client_address));
 	return client_fd;
 }
 
@@ -882,6 +889,10 @@ int add_socket(Node *n_prime) {
 		// create a new socket
 		if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
 			exit_error("Could not make socket");
+		}
+		// set to be reusable 
+		if (setsockopt(new_sock, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
+    		exit_error("setsockopt(SO_REUSEADDR) failed");
 		}
 		LOG("socket made [socket %d]\n",new_sock);
 		// connect new socket to peer
