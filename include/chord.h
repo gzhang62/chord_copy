@@ -54,13 +54,6 @@ uint64_t get_hash(char *buffer);
 
 // Stuff we created
 
-// Table mapping socket address to socket
-typedef struct _AddressTable {
-    struct sockaddr_in address;       /* key */
-    int sd;                           /* value */
-    UT_hash_handle hh;                /* makes this structure hashable */
-} AddressTable;
-
 typedef enum {
     CALLBACK_NONE = 0,
     CALLBACK_PRINT_LOOKUP = 1,
@@ -84,6 +77,8 @@ typedef struct Callback {
 
 
 // Functions 
+char *display_address(struct sockaddr_in address);
+
 uint64_t get_node_hash(Node *nprime);
 uint64_t get_hash(char *buffer);
 

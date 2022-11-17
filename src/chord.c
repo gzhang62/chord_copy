@@ -12,13 +12,28 @@
 #include "hash.h"
 #include "queue.h"
 
-AddressTable *address_table;
+#define VERBOSE true
+
+void LOG(const char *template, ...){
+  if (VERBOSE) { 
+	va_list ap;
+	va_start (ap, template);
+	vfprintf (stderr, template, ap);
+	va_end (ap);
+  }
+}
 
 int num_clients;
-int clients[MAX_CLIENTS]; // keep track of fds, if fd is present, fds[i] = 1 else fds[i] = 0
+int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds[i] = 1 else fds[i] = 0
+char address_buffer[80]; // for displaying object
 
 // Num successors
 uint8_t num_successors;
+
+char *display_address(struct sockaddr_in address) {
+	sprintf(address_buffer, "%s %d", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+	return address_buffer;
+}
 
 void printKey(uint64_t key) {
 	printf("%" PRIu64, key);
@@ -39,35 +54,39 @@ int main(int argc, char *argv[]) {
 	// uint8_t num_successors = chord_args.num_successors;
 	struct sockaddr_in my_address = chord_args.my_address;
 	struct sockaddr_in join_address = chord_args.join_address;
-	UNUSED(join_address);
 	/* timeout values in seconds */
 	int cpp = chord_args.check_predecessor_period;
 	int ffp = chord_args.fix_fingers_period;
 	int sp = chord_args.stablize_period;
 
-	server_fd = setup_server(ntohs(my_address.sin_port));
-	FD_ZERO(&readset);	// zero out readset
+	server_fd = setup_server(my_address.sin_port);
+	FD_ZERO(&readset);				// zero out readset
 	FD_SET(server_fd, &readset);	// add server_fd
-	FD_SET(0, &readset);	// add stdin
+	FD_SET(0, &readset);			// add stdin
 
 	init_global(chord_args);
+	//printf("%d:%d\n",chord_args.join_address.sin_addr.s_addr,chord_args.join_address.sin_port);
 	// node is being created
-	if(chord_args.join_address.sin_port == 0) {
+	if(join_address.sin_port == 0) {
 		// TODO: better mechanism for detecting created vs joining
 		create();
 	} else {
 		// node is joining
-		join(chord_args.join_address);
+		join(join_address);
 	}
+	
+	printf("> "); // indicate we're waiting for user input
 
 	for(;;) {
 		timeout.tv_sec = 1;
 		timeout.tv_usec = 0;
 		int ret = select(maxfd + 1, &readset, NULL, NULL, &timeout);
+		//printf("select...\n");
 
 		if(ret == -1) {
 			// error
 		} else if(ret) {
+			LOG("selected\n");
 			if(FD_ISSET(server_fd, &readset)) {
 				// handle a new connection
 				int client_socket = handle_connection(server_fd);
@@ -83,7 +102,8 @@ int main(int argc, char *argv[]) {
 			for(int i = 0; i < MAX_CLIENTS; i++) {
 				if(clients[i] != 0 && FD_ISSET(clients[i], &readset)) {
 					// process client
-					// read_process_node(clients[i]);
+					LOG("process node %d\n",clients[i]);
+					read_process_node(clients[i]);
 				}
 			}
 			check_periodic(cpp, ffp, sp);
@@ -92,7 +112,6 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	printf("> "); // indicate we're waiting for user input
 	return 0;
 }
 
@@ -128,6 +147,7 @@ int read_process_node(int sd)	{
 	int return_value = -1;
 
 	ChordMessage *message = receive_message(sd);
+	LOG("Receive message from %d\n",sd);
 	// Decide what to do based on message case
 	switch(message->msg_case) {
 		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
@@ -264,6 +284,7 @@ int send_message(int sd, ChordMessage *message) {
 	assert(amount_sent == len);
 
 	free(buffer);
+	LOG("Sent message [socket %d] \n",sd);
 	return 0;
 }
 
@@ -307,6 +328,7 @@ ChordMessage *receive_message(int sd) {
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	// TODO try other successors
 	int successor_sd = get_socket(successors[0]);
+	LOG("Send Find Succ Request(id: %" PRIu64 ", callback %d[%d]\n",id,func,arg);
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
@@ -381,7 +403,7 @@ int add_callback(CallbackFunction func, int arg) {
 	struct Callback callback = {NULL, NULL, func, query_id, arg};
 	struct Callback *cb_ptr = &callback;
 	InsertDQ(callback_list, cb_ptr);
-	printf("Added %d, args %d -> query_id %d\n", func, arg, query_id);
+	LOG("Added %d, args %d -> query_id %d\n", func, arg, query_id);
 	return query_id;
 }
 
@@ -399,6 +421,7 @@ int do_callback(ChordMessage *message) {
 		}
 	}
 	Node *node = message->find_successor_response->node;
+	LOG("callback %d, args %d",curr->func,curr->arg);
 	switch(curr->func) {
 		case CALLBACK_PRINT_LOOKUP: ;
 			callback_print_lookup(node);
@@ -508,9 +531,10 @@ int callback_print_lookup(Node *result) {
 	uint64_t node_id = get_node_hash(result);
 	
 	// Print results
-	struct in_addr ip_addr;
-	ip_addr.s_addr = result->address;
-	printf("< %lu %s %u\n", node_id, inet_ntoa(ip_addr), result->address);
+	struct sockaddr_in ip_addr;
+	ip_addr.sin_addr.s_addr = result->address;
+	ip_addr.sin_port = result->port;
+	printf("< %lu %s\n", node_id, display_address(ip_addr));
 	printf("> "); // waiting for next user input
 	return 0;
 }
@@ -604,9 +628,11 @@ int setup_server(int server_port) {
  * @return new client socket
  */
 int handle_connection(int sd) {
+	LOG("taking connection from %d\n",sd);
 	struct sockaddr_in client_address;
 	socklen_t len = sizeof(client_address);
 	int client_fd = accept(sd, (struct sockaddr *)&client_address, &len);
+	LOG("handled connection: {%s}",display_address(client_address));
 	return client_fd;
 }
 
@@ -628,6 +654,7 @@ int join_node(Node *nprime) {
 }
 
 int create() {
+	LOG("creating node...\n");
 	predecessor = NULL;
 	successors[0] = &n;
 	return 0;
@@ -635,13 +662,14 @@ int create() {
 
 //TODO
 int join(struct sockaddr_in join_addr) {
+	LOG("join to {%s}\n",display_address(join_addr));
 	predecessor = NULL;
 	Node temp_succ;
 	temp_succ.address = join_addr.sin_addr.s_addr;
 	temp_succ.port = join_addr.sin_port;
 	successors[0] = &temp_succ;
-	add_socket(&temp_succ);
-	send_find_successor_request(n.key + 1, 2, 0);
+	int new_sd = add_socket(&temp_succ);
+	send_find_successor_request_socket(new_sd, n.key + 1, CALLBACK_JOIN, 0);
 	// TODO: modify to find successor list vs first successor
 	return -1;
 }
@@ -716,7 +744,7 @@ void callback_fix_fingers(Node *node, int arg) {
 	}
 	memcpy(finger[arg], node, sizeof(Node));	
 
-	if(get_socket(node) < 0) {
+	if(get_socket(node) == -1) {
 		// socket does not exist in the mappings/need to add it
 		add_socket(node);
 	}		
@@ -782,43 +810,22 @@ void check_periodic(int cpp, int ffp, int sp) {
 }
 
 /**
- * Get the socket from address_table.
- * @author Adam
- * @param nprime Node (pointer) for which we're looking to get associated socket
- * @return -1 if not found in address_table, else the socket from table.
- */
-int get_socket(Node *nprime) {
-	// Set up key (following the uthash guide)
-	AddressTable entry;
-	memset(&entry, 0, sizeof(entry));
-	entry.address.sin_family = AF_INET;
-	entry.address.sin_addr.s_addr = nprime->address;
-	entry.address.sin_port = (unsigned short) (nprime->port); // NOTE: copying 32 bit into 16 bit
-
-	// Find in global variable `address_table`
-	AddressTable *result;
-	HASH_FIND(hh, address_table, &entry.address, sizeof(struct sockaddr_in), result);
-	return ((result == NULL) ? -1 : result->sd);
-}
-
-/**
  * Add to global address to socket mapping
  * @author Gary
  * @param n_prime Node whose address we want to map to a socket
  * @return new socket or existing socket
  */
 int add_socket(Node *n_prime) {
+	// Construct address
 	struct sockaddr_in addr;
-	int new_sock;
-	AddressTable *ret;
-	// set up address
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = (unsigned short) n_prime->port;
-	addr.sin_addr.s_addr = (n_prime->address);
+	addr.sin_addr.s_addr = n_prime->address;
 
-	HASH_FIND_PTR(address_table, &addr, ret);
-	if(ret) {
+	int new_sock;
+	int sd = get_socket(n_prime);
+	if(sd != -1) {
 		// socket already exists return it
 		return sd;
 	} else {
@@ -826,15 +833,16 @@ int add_socket(Node *n_prime) {
 		if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
 			exit_error("Could not make socket");
 		}
+		LOG("socket made [socket %d]\n",new_sock);
 		// connect new socket to peer
 		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
 			exit_error("Could not connect with peer");
 		}	
+		LOG("connection made {%s}\n",display_address(addr));
 		add_socket_to_array(new_sock);
 	}
 	return new_sock;
 }
-
 
 /**
  * Add to global address to socket mapping
@@ -843,15 +851,8 @@ int add_socket(Node *n_prime) {
  * @param n_prime Node whose address we want to map to a socket
  */
 int delete_socket(Node *n_prime) {
-	struct sockaddr_in addr;
-	AddressTable *ret;
-	// set addr
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = (unsigned short) n_prime->port;
-	addr.sin_addr.s_addr = (n_prime->address);
-	HASH_FIND_PTR(address_table, &addr, ret);
-	if(ret) {
+	int sd = get_socket(n_prime);
+	if(sd != -1) {
 		// address was found remove it
 		close(sd);
 		// remove from array
@@ -931,4 +932,5 @@ int delete_socket_from_array(int sd) {
 	}
 	return -1;
 }
+
 
