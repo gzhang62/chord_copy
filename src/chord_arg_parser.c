@@ -19,7 +19,7 @@ error_t chord_parser(int key, char *arg, struct argp_state *state) {
 		}
 		args->my_address.sin_family = AF_INET;
 		args->my_address.sin_addr.s_addr = INADDR_ANY;
-        args->my_address.sin_port = port;
+        args->my_address.sin_port = htons(port);
 		break;
 	}
 
@@ -43,7 +43,7 @@ error_t chord_parser(int key, char *arg, struct argp_state *state) {
 		if (0 /* port is invalid */) {
 			argp_error(state, "Invalid option for a port, must be a number");
 		}
-        args->join_address.sin_port = port;
+        args->join_address.sin_port = htons(port);
 		break;
 	}
 

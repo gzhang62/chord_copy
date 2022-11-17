@@ -13,10 +13,16 @@
 #include "queue.h"
 
 int num_clients;
-int clients[MAX_CLIENTS]; // keep track of fds, if fd is present, fds[i] = 1 else fds[i] = 0
+int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds[i] = 1 else fds[i] = 0
+char address_buffer[80]; // for displaying object
 
 // Num successors
 uint8_t num_successors;
+
+char *display_address(struct sockaddr_in address) {
+	sprintf(address_buffer, "%s %d", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+	return address_buffer;
+}
 
 void printKey(uint64_t key) {
 	printf("%" PRIu64, key);
@@ -64,7 +70,7 @@ int main(int argc, char *argv[]) {
 		timeout.tv_sec = 1;
 		timeout.tv_usec = 0;
 		int ret = select(maxfd + 1, &readset, NULL, NULL, &timeout);
-		printf("select...\n");
+		//printf("select...\n");
 
 		if(ret == -1) {
 			// error
@@ -267,6 +273,7 @@ int send_message(int sd, ChordMessage *message) {
 	assert(amount_sent == len);
 
 	free(buffer);
+	printf("Sent message [socket %d] \n",sd);
 	return 0;
 }
 
@@ -513,9 +520,10 @@ int callback_print_lookup(Node *result) {
 	uint64_t node_id = get_node_hash(result);
 	
 	// Print results
-	struct in_addr ip_addr;
-	ip_addr.s_addr = result->address;
-	printf("< %lu %s %u\n", node_id, inet_ntoa(ip_addr), result->address);
+	struct sockaddr_in ip_addr;
+	ip_addr.sin_addr.s_addr = result->address;
+	ip_addr.sin_port = result->port;
+	printf("< %lu %s\n", node_id, display_address(ip_addr));
 	printf("> "); // waiting for next user input
 	return 0;
 }
@@ -613,6 +621,7 @@ int handle_connection(int sd) {
 	struct sockaddr_in client_address;
 	socklen_t len = sizeof(client_address);
 	int client_fd = accept(sd, (struct sockaddr *)&client_address, &len);
+	printf("handled connection: {%s}",display_address(client_address));
 	return client_fd;
 }
 
@@ -634,6 +643,7 @@ int join_node(Node *nprime) {
 }
 
 int create() {
+	printf("creating node...\n");
 	predecessor = NULL;
 	successors[0] = &n;
 	return 0;
@@ -641,7 +651,7 @@ int create() {
 
 //TODO
 int join(struct sockaddr_in join_addr) {
-	printf("join to %s:%d\n",inet_ntoa(join_addr.sin_addr), join_addr.sin_port);
+	printf("join to {%s}\n",display_address(join_addr));
 	predecessor = NULL;
 	Node temp_succ;
 	temp_succ.address = join_addr.sin_addr.s_addr;
@@ -812,11 +822,12 @@ int add_socket(Node *n_prime) {
 		if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
 			exit_error("Could not make socket");
 		}
-		printf("Connection made, [socket %d]\n",new_sock);
+		printf("socket made [socket %d]\n",new_sock);
 		// connect new socket to peer
 		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
 			exit_error("Could not connect with peer");
 		}	
+		printf("connection made {%s}\n",display_address(addr));
 		add_socket_to_array(new_sock);
 	}
 	return new_sock;
@@ -910,4 +921,5 @@ int delete_socket_from_array(int sd) {
 	}
 	return -1;
 }
+
 
