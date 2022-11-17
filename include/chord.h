@@ -78,6 +78,8 @@ typedef struct Callback {
 
 // Functions 
 char *display_address(struct sockaddr_in address);
+void node_to_address(Node *node, struct sockaddr_in *out_sockaddr);
+char *display_node(Node *node);
 
 uint64_t get_node_hash(Node *nprime);
 uint64_t get_hash(char *buffer);

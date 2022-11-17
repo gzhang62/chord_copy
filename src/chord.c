@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,22 +18,50 @@
 void LOG(const char *template, ...){
   if (VERBOSE) { 
 	va_list ap;
-	va_start (ap, template);
-	vfprintf (stderr, template, ap);
-	va_end (ap);
+	va_start(ap, template);
+	vfprintf(stderr, template, ap);
+	va_end(ap);
   }
 }
 
 int num_clients;
 int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds[i] = 1 else fds[i] = 0
-char address_buffer[80]; // for displaying object
+
+char address_string_buffer[40]; // for displaying addresses
+char node_string_buffer[80]; 	// for displaying nodes
 
 // Num successors
 uint8_t num_successors;
 
+/**
+ * Format the given address in the form "<address> <port>", store in the 
+ * variable `address_string_buffer`, and return its address.
+ */
 char *display_address(struct sockaddr_in address) {
-	sprintf(address_buffer, "%s %d", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
-	return address_buffer;
+	sprintf(address_string_buffer, "%s %d", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+	return address_string_buffer;
+}
+
+/**
+ * Copy the address/port from the given node into the memory address
+ * at the given sockaddr_in pointer.
+ */
+void node_to_address(Node *node, struct sockaddr_in *out_sockaddr) {
+	memset(out_sockaddr, 0, sizeof(struct sockaddr_in));
+	out_sockaddr->sin_family = AF_INET;
+	out_sockaddr->sin_addr.s_addr = node->address;
+	out_sockaddr->sin_port = node->port;
+}
+
+/**
+ * Format the given node in the form "<node hash> <address> <port>", store in the 
+ * variable `node_string_buffer`, and return its address.
+ */
+char *display_node(Node *node) {
+	struct sockaddr_in addr;
+	node_to_address(node, &addr);
+	sprintf(node_string_buffer, "%" PRIu64 " %s", node->key, display_address(addr));
+	return node_string_buffer;
 }
 
 void printKey(uint64_t key) {
@@ -116,7 +145,6 @@ int main(int argc, char *argv[]) {
 }
 
 void init_global(struct chord_arguments chord_args) {
-	uint8_t *hash = malloc(20);
 	int cpret = clock_gettime(CLOCK_REALTIME, &last_check_predecessor);
 	int ffret = clock_gettime(CLOCK_REALTIME, &last_fix_fingers);
 	int spret = clock_gettime(CLOCK_REALTIME, &last_stabilize);
@@ -129,9 +157,7 @@ void init_global(struct chord_arguments chord_args) {
 	n.port = chord_args.my_address.sin_port;
 	n.address = chord_args.my_address.sin_addr.s_addr;
 	ctx = sha1sum_create(NULL, 0);
-	sha1sum_update(ctx, (u_int8_t*)&n.address, sizeof(uint32_t));
-	sha1sum_finish(ctx, (u_int8_t*)&n.port, sizeof(uint32_t), hash);
-	n.key = sha1sum_truncated_head(hash);
+	n.key = get_node_hash(&n);
 	// initialize callback
 	InitDQ(callback_list, Callback);
 	assert(callback_list);
@@ -531,18 +557,24 @@ int callback_print_lookup(Node *result) {
 	uint64_t node_id = get_node_hash(result);
 	
 	// Print results
-	struct sockaddr_in ip_addr;
-	ip_addr.sin_addr.s_addr = result->address;
-	ip_addr.sin_port = result->port;
-	printf("< %lu %s\n", node_id, display_address(ip_addr));
+	printf("< %s\n", display_node(result));
 	printf("> "); // waiting for next user input
 	return 0;
 }
 
-//TODO
+/**
+ * Return hash of given node.
+ * @author Gary
+ * @author Adam
+ */
 uint64_t get_node_hash(Node *n) {
-	UNUSED(n);
-	return -1;
+	uint8_t *hash = malloc(20);
+	sha1sum_reset(ctx);
+	sha1sum_update(ctx, (u_int8_t*)&n->address, sizeof(uint32_t));
+	sha1sum_finish(ctx, (u_int8_t*)&n->port, sizeof(uint32_t), hash);
+	uint64_t ret = sha1sum_truncated_head(hash);
+	free(hash);
+	return ret;
 }
 
 //TODO
@@ -553,7 +585,15 @@ uint64_t get_hash(char *buffer) {
 
 //TODO
 int print_state() {
-	return -1;
+	printf("Self %s\n", display_node(&n));
+	//TODO should I start from zero or one?
+	for(int i = 0; i < num_successors; i++) {
+		printf("Successor [%d] %s", i+1, display_node(successors[i]));
+	}
+	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
+		printf("Finger [%d] %s", i+1, display_node(finger[i]));
+	}
+
 }
 
 /**
