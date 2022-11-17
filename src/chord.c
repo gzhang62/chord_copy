@@ -554,8 +554,6 @@ int lookup(char *key) {
  * @author Adam
  */
 int callback_print_lookup(Node *result) {
-	uint64_t node_id = get_node_hash(result);
-	
 	// Print results
 	printf("< %s\n", display_node(result));
 	printf("> "); // waiting for next user input
@@ -593,7 +591,7 @@ int print_state() {
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
 		printf("Finger [%d] %s", i+1, display_node(finger[i]));
 	}
-
+	return 0;
 }
 
 /**
