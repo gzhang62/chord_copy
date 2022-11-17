@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
 		if(ret == -1) {
 			// error
 		} else if(ret) {
-			LOG("selected\n");
+			//LOG("selected\n");
 			if(FD_ISSET(server_fd, &readset)) {
 				// handle a new connection
 				int client_socket = handle_connection(server_fd);
@@ -484,6 +484,8 @@ int do_callback(ChordMessage *message) {
 			break;
 		case CALLBACK_FIX_FINGERS: ;
 			callback_fix_fingers(node, curr->arg);
+			break;
+		case CALLBACK_NONE: ;
 			break;
 		default: ;
 			exit_error("Callback provided with unknown function enum");
@@ -898,7 +900,7 @@ int add_socket(Node *n_prime) {
 			exit_error("Could not make socket");
 		}
 		// set to be reusable 
-		if (setsockopt(new_sock, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
+		if (setsockopt(new_sock, SOL_SOCKET, SO_REUSEPORT, &(int){1}, sizeof(int)) < 0) {
     		exit_error("setsockopt(SO_REUSEADDR) failed");
 		}
 		LOG("socket made [socket %d]\n",new_sock);
