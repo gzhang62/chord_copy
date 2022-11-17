@@ -394,12 +394,19 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
 	// Construct response
 	ChordMessage message;
 	RFindSuccReq request;
+	Node requestor;
 	chord_message__init(&message);
 	r_find_succ_req__init(&request);
+	node__init(&requestor);
+	
 	// TODO do we need to free these? 
-
 	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;		
+	// set node
+	requestor.key = n.key;
+	requestor.address = n.address;
+	requestor.port = n.port;
 	request.key = id;
+	request.requester = &requestor;		// TODO: not sure if requester is correct
 	message.r_find_succ_req = &request;
 	message.has_query_id = true;
 	message.query_id = query_id;
