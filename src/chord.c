@@ -14,6 +14,9 @@
 
 AddressTable *address_table;
 
+int num_clients;
+int clients[MAX_CLIENTS]; // keep track of fds, if fd is present, fds[i] = 1 else fds[i] = 0
+
 // Num successors
 uint8_t num_successors;
 
@@ -22,10 +25,10 @@ void printKey(uint64_t key) {
 }
 
 int main(int argc, char *argv[]) {
-	address_table = NULL;
 
-	int num_clients = 0;
-	int clients[MAX_CLIENTS]; // keep track of fds, if fd is present, fds[i] = 1 else fds[i] = 0
+	memset(clients, 0, MAX_CLIENTS*sizeof(int));
+	num_clients = 0;
+
 	int server_fd;
 	/* Select variables */
 	int maxfd = 0;
@@ -68,10 +71,7 @@ int main(int argc, char *argv[]) {
 			if(FD_ISSET(server_fd, &readset)) {
 				// handle a new connection
 				int client_socket = handle_connection(server_fd);
-
-				clients[num_clients] = client_socket;
-				num_clients ++;
-
+				add_socket_to_array(client_socket);
 				FD_SET(client_socket, &readset);
 			}	
 
@@ -80,8 +80,8 @@ int main(int argc, char *argv[]) {
 				// read_process_input(server_fd);
 			} 
 
-			for(int i = 0; i < num_clients; i++) {
-				if(FD_ISSET(clients[i], &readset)) {
+			for(int i = 0; i < MAX_CLIENTS; i++) {
+				if(clients[i] != 0 && FD_ISSET(clients[i], &readset)) {
 					// process client
 					// read_process_node(clients[i]);
 				}
@@ -114,7 +114,7 @@ void init_global(struct chord_arguments chord_args) {
 	sha1sum_finish(ctx, (u_int8_t*)&n.port, sizeof(uint32_t), hash);
 	n.key = sha1sum_truncated_head(hash);
 	// initialize callback
-	InitDQ(callback_list, struct Callback);
+	InitDQ(callback_list, Callback);
 	assert(callback_list);
 }
 
@@ -247,6 +247,8 @@ Node **get_successor_list() {
  */
 int send_message(int sd, ChordMessage *message) {
 	int amount_sent;
+	//message->version = 417;
+
 	// TODO: Check if sd is -1;
 	// Pack and send message
 	int64_t len = chord_message__get_packed_size(message);
@@ -371,6 +373,7 @@ void connect_send_find_successor_response(Node *original_node, uint32_t query_id
 /**
  * Create and assign the callback into the array.
  * @author Adam
+ * @author Gary
  * @return The location of the callback in the callback_array (query id)
  */
 int add_callback(CallbackFunction func, int arg) {
@@ -382,6 +385,10 @@ int add_callback(CallbackFunction func, int arg) {
 	return query_id;
 }
 
+/**
+ * @author Adam
+ * @author Gary
+ */
 int do_callback(ChordMessage *message) {
 	assert(message->has_query_id);
 	struct Callback *curr;
@@ -593,7 +600,6 @@ int setup_server(int server_port) {
  * handle a new node asking for a connection
  * @author Gary
  * @param sd server socket
- * @param num_clients number of clients
  * @param clients array of client fds already connected
  * @return new client socket
  */
@@ -607,6 +613,19 @@ int handle_connection(int sd) {
 ////////////////////////
 // Add/removing nodes //
 ////////////////////////
+
+/* The structure here is that the main functions (e.g. join()) are called,
+ * which call some function which will eventually add to the callback array;
+ * when we get a response, we get a response which 
+ */
+
+//TODO
+int join_node(Node *nprime) {
+	// Assumes the key is already set in the node. 
+	int nprime_sd = get_socket(nprime);
+	send_find_successor_request_socket(nprime_sd, n.key, CALLBACK_JOIN, 0);
+	return -1;
+}
 
 int create() {
 	predecessor = NULL;
@@ -678,6 +697,9 @@ int notify(Node *nprime) {
  * @return 1, could be made void
  */
 int fix_fingers() {
+	// Note: the first entry of the finger table is *the current node*
+	// TODO Bobby said that we said that usually we pick only
+	// one at a time (randomly) to pick
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
 		send_find_successor_request(n.key + (2 << (i-1)), CALLBACK_FIX_FINGERS, i); 
 	}
@@ -702,19 +724,9 @@ void callback_fix_fingers(Node *node, int arg) {
 
 int check_predecessor() {
 	ChordMessage message;
-	AddressTable *entry;
-	struct sockaddr_in addr;
-	int sd;
-
-	// get socket for predecessor from global socket to address mappings
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = (unsigned short) htonl(predecessor->port);
-	addr.sin_addr.s_addr = predecessor->address;
-
-	HASH_FIND_PTR(address_table, &addr, entry);
-	assert(entry);
-	sd = entry->sd;
+	
+	int sd = get_socket(predecessor);
+	assert(sd != -1);
 
 	// construct chord message check predecessor
 	CheckPredecessorRequest request;
@@ -808,7 +820,7 @@ int add_socket(Node *n_prime) {
 	HASH_FIND_PTR(address_table, &addr, ret);
 	if(ret) {
 		// socket already exists return it
-		return ret->sd;
+		return sd;
 	} else {
 		// create a new socket
 		if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -817,21 +829,17 @@ int add_socket(Node *n_prime) {
 		// connect new socket to peer
 		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
 			exit_error("Could not connect with peer");
-		}
-		// set up new AddressTable entry
-		ret = (AddressTable *) malloc(sizeof *ret);
-		ret->address = addr;
-		ret->sd = new_sock;
-		// add mapping to global hash map
-		HASH_ADD(hh, address_table, address, sizeof(struct sockaddr_in), ret);
-		return new_sock;
+		}	
+		add_socket_to_array(new_sock);
 	}
+	return new_sock;
 }
 
 
 /**
  * Add to global address to socket mapping
  * @author Gary
+ * @author Adam
  * @param n_prime Node whose address we want to map to a socket
  */
 int delete_socket(Node *n_prime) {
@@ -845,12 +853,82 @@ int delete_socket(Node *n_prime) {
 	HASH_FIND_PTR(address_table, &addr, ret);
 	if(ret) {
 		// address was found remove it
-		close(ret->sd);
-		HASH_DEL(address_table, ret);
-		free(ret);
+		close(sd);
+		// remove from array
+		delete_socket_from_array(sd);
 		return 0;
 	} else {
 		// address was not found return -1
 		return -1;
 	}
 }
+
+// TODO the below function won't work because add_socket and remove_socket don't interact with this table
+/**
+ * Given the node (containing an address), iterate through clients
+ * and look for a socket connected to that address. 
+ * @author Adam
+ * @return -1 if there isn't an associated socket for the given node's
+ * address, else return the socket descriptor.
+ */
+int get_socket(Node *node) {
+	//Extract address from node
+	struct sockaddr_in node_address;
+	memset(&node_address, 0, sizeof(node_address));
+
+	node_address.sin_family = AF_INET;
+	node_address.sin_addr.s_addr = node->address;
+	node_address.sin_port = node->port;
+	
+	// Set up structures for iteration below
+	struct sockaddr_in sd_address;
+	memset(&sd_address, 0, sizeof(sd_address));
+	socklen_t len;
+
+	// Iterate over all sockets (I hope clients is set up correctly)
+	for(int i = 0; i < MAX_CLIENTS; i++) {
+		if(clients[i] != 0) {
+			len = sizeof(sd_address);
+			// Use getsockname to find the address, compare to node_address
+			getsockname(clients[i], (struct sockaddr *) &sd_address, &len);
+			if((sd_address.sin_addr.s_addr == node_address.sin_addr.s_addr) &&
+			(sd_address.sin_port == node_address.sin_port)) {
+				return clients[i];
+			}
+		}
+	}
+	// No matching socket found
+	return -1;
+}
+
+/**
+ * Add socket to clients 
+ * @author Adam
+ * References `clients`
+ * @return -1 if not inserted, else the inserted socket
+ */
+int add_socket_to_array(int sd) {
+	for(int i = 0; i < MAX_CLIENTS; i++) {
+		if(clients[i] == 0) {
+			clients[i] = sd;
+			return clients[i];
+		}
+	}
+	return -1;
+}
+
+/**
+ * Remove socket from clients
+ * @author Adam
+ * @return -1 if not deleted, else the deleted socket
+ */
+int delete_socket_from_array(int sd) {
+	for(int i = 0; i < MAX_CLIENTS; i++) {
+		if(clients[i] == sd) {
+			clients[i] = 0;
+			return sd;
+		}
+	}
+	return -1;
+}
+
