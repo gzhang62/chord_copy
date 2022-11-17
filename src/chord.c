@@ -37,35 +37,39 @@ int main(int argc, char *argv[]) {
 	// uint8_t num_successors = chord_args.num_successors;
 	struct sockaddr_in my_address = chord_args.my_address;
 	struct sockaddr_in join_address = chord_args.join_address;
-	UNUSED(join_address);
 	/* timeout values in seconds */
 	int cpp = chord_args.check_predecessor_period;
 	int ffp = chord_args.fix_fingers_period;
 	int sp = chord_args.stablize_period;
 
-	server_fd = setup_server(ntohs(my_address.sin_port));
-	FD_ZERO(&readset);	// zero out readset
+	server_fd = setup_server(my_address.sin_port);
+	FD_ZERO(&readset);				// zero out readset
 	FD_SET(server_fd, &readset);	// add server_fd
-	FD_SET(0, &readset);	// add stdin
+	FD_SET(0, &readset);			// add stdin
 
 	init_global(chord_args);
+	//printf("%d:%d\n",chord_args.join_address.sin_addr.s_addr,chord_args.join_address.sin_port);
 	// node is being created
-	if(chord_args.join_address.sin_port == 0) {
+	if(join_address.sin_port == 0) {
 		// TODO: better mechanism for detecting created vs joining
 		create();
 	} else {
 		// node is joining
-		join(chord_args.join_address);
+		join(join_address);
 	}
+	
+	printf("> "); // indicate we're waiting for user input
 
 	for(;;) {
 		timeout.tv_sec = 1;
 		timeout.tv_usec = 0;
 		int ret = select(maxfd + 1, &readset, NULL, NULL, &timeout);
+		printf("select...\n");
 
 		if(ret == -1) {
 			// error
 		} else if(ret) {
+			printf("selected\n");
 			if(FD_ISSET(server_fd, &readset)) {
 				// handle a new connection
 				int client_socket = handle_connection(server_fd);
@@ -81,7 +85,8 @@ int main(int argc, char *argv[]) {
 			for(int i = 0; i < MAX_CLIENTS; i++) {
 				if(clients[i] != 0 && FD_ISSET(clients[i], &readset)) {
 					// process client
-					// read_process_node(clients[i]);
+					printf("process node %d\n",clients[i]);
+					read_process_node(clients[i]);
 				}
 			}
 			check_periodic(cpp, ffp, sp);
@@ -90,7 +95,6 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	printf("> "); // indicate we're waiting for user input
 	return 0;
 }
 
@@ -126,6 +130,7 @@ int read_process_node(int sd)	{
 	int return_value = -1;
 
 	ChordMessage *message = receive_message(sd);
+	printf("Receive message from %d\n",sd);
 	// Decide what to do based on message case
 	switch(message->msg_case) {
 		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
@@ -305,6 +310,7 @@ ChordMessage *receive_message(int sd) {
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	// TODO try other successors
 	int successor_sd = get_socket(successors[0]);
+	printf("Send Find Succ Request(id: %" PRIu64 ", callback %d[%d]\n",id,func,arg);
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
@@ -397,6 +403,7 @@ int do_callback(ChordMessage *message) {
 		}
 	}
 	Node *node = message->find_successor_response->node;
+	printf("callback %d, args %d",curr->func,curr->arg);
 	switch(curr->func) {
 		case CALLBACK_PRINT_LOOKUP: ;
 			callback_print_lookup(node);
@@ -602,6 +609,7 @@ int setup_server(int server_port) {
  * @return new client socket
  */
 int handle_connection(int sd) {
+	printf("taking connection from %d\n",sd);
 	struct sockaddr_in client_address;
 	socklen_t len = sizeof(client_address);
 	int client_fd = accept(sd, (struct sockaddr *)&client_address, &len);
@@ -633,13 +641,14 @@ int create() {
 
 //TODO
 int join(struct sockaddr_in join_addr) {
+	printf("join to %s:%d\n",inet_ntoa(join_addr.sin_addr), join_addr.sin_port);
 	predecessor = NULL;
 	Node temp_succ;
 	temp_succ.address = join_addr.sin_addr.s_addr;
 	temp_succ.port = join_addr.sin_port;
 	successors[0] = &temp_succ;
-	add_socket(&temp_succ);
-	send_find_successor_request(n.key + 1, CALLBACK_JOIN, 0);
+	int new_sd = add_socket(&temp_succ);
+	send_find_successor_request_socket(new_sd, n.key + 1, CALLBACK_JOIN, 0);
 	// TODO: modify to find successor list vs first successor
 	return -1;
 }
@@ -790,8 +799,8 @@ int add_socket(Node *n_prime) {
 	struct sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons((unsigned short) n_prime->port);
-	addr.sin_addr.s_addr = htonl(n_prime->address);
+	addr.sin_port = (unsigned short) n_prime->port;
+	addr.sin_addr.s_addr = n_prime->address;
 
 	int new_sock;
 	int sd = get_socket(n_prime);
@@ -803,6 +812,7 @@ int add_socket(Node *n_prime) {
 		if((new_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
 			exit_error("Could not make socket");
 		}
+		printf("Connection made, [socket %d]\n",new_sock);
 		// connect new socket to peer
 		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
 			exit_error("Could not connect with peer");
