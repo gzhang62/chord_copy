@@ -54,13 +54,6 @@ uint64_t get_hash(char *buffer);
 
 // Stuff we created
 
-// Table mapping socket address to socket
-typedef struct _AddressTable {
-    struct sockaddr_in address;       /* key */
-    int sd;                           /* value */
-    UT_hash_handle hh;                /* makes this structure hashable */
-} AddressTable;
-
 typedef enum {
     CALLBACK_NONE = 0,
     CALLBACK_PRINT_LOOKUP = 1,

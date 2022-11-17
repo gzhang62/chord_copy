@@ -12,8 +12,6 @@
 #include "hash.h"
 #include "queue.h"
 
-AddressTable *address_table;
-
 int num_clients;
 int clients[MAX_CLIENTS]; // keep track of fds, if fd is present, fds[i] = 1 else fds[i] = 0
 
@@ -641,7 +639,7 @@ int join(struct sockaddr_in join_addr) {
 	temp_succ.port = join_addr.sin_port;
 	successors[0] = &temp_succ;
 	add_socket(&temp_succ);
-	send_find_successor_request(n.key + 1, 2, 0);
+	send_find_successor_request(n.key + 1, CALLBACK_JOIN, 0);
 	// TODO: modify to find successor list vs first successor
 	return -1;
 }
@@ -716,7 +714,7 @@ void callback_fix_fingers(Node *node, int arg) {
 	}
 	memcpy(finger[arg], node, sizeof(Node));	
 
-	if(get_socket(node) < 0) {
+	if(get_socket(node) == -1) {
 		// socket does not exist in the mappings/need to add it
 		add_socket(node);
 	}		
@@ -782,43 +780,22 @@ void check_periodic(int cpp, int ffp, int sp) {
 }
 
 /**
- * Get the socket from address_table.
- * @author Adam
- * @param nprime Node (pointer) for which we're looking to get associated socket
- * @return -1 if not found in address_table, else the socket from table.
- */
-int get_socket(Node *nprime) {
-	// Set up key (following the uthash guide)
-	AddressTable entry;
-	memset(&entry, 0, sizeof(entry));
-	entry.address.sin_family = AF_INET;
-	entry.address.sin_addr.s_addr = nprime->address;
-	entry.address.sin_port = (unsigned short) (nprime->port); // NOTE: copying 32 bit into 16 bit
-
-	// Find in global variable `address_table`
-	AddressTable *result;
-	HASH_FIND(hh, address_table, &entry.address, sizeof(struct sockaddr_in), result);
-	return ((result == NULL) ? -1 : result->sd);
-}
-
-/**
  * Add to global address to socket mapping
  * @author Gary
  * @param n_prime Node whose address we want to map to a socket
  * @return new socket or existing socket
  */
 int add_socket(Node *n_prime) {
+	// Construct address
 	struct sockaddr_in addr;
-	int new_sock;
-	AddressTable *ret;
-	// set up address
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = (unsigned short) n_prime->port;
-	addr.sin_addr.s_addr = (n_prime->address);
+	addr.sin_port = htons((unsigned short) n_prime->port);
+	addr.sin_addr.s_addr = htonl(n_prime->address);
 
-	HASH_FIND_PTR(address_table, &addr, ret);
-	if(ret) {
+	int new_sock;
+	int sd = get_socket(n_prime);
+	if(sd != -1) {
 		// socket already exists return it
 		return sd;
 	} else {
@@ -835,7 +812,6 @@ int add_socket(Node *n_prime) {
 	return new_sock;
 }
 
-
 /**
  * Add to global address to socket mapping
  * @author Gary
@@ -843,15 +819,8 @@ int add_socket(Node *n_prime) {
  * @param n_prime Node whose address we want to map to a socket
  */
 int delete_socket(Node *n_prime) {
-	struct sockaddr_in addr;
-	AddressTable *ret;
-	// set addr
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = (unsigned short) n_prime->port;
-	addr.sin_addr.s_addr = (n_prime->address);
-	HASH_FIND_PTR(address_table, &addr, ret);
-	if(ret) {
+	int sd = get_socket(n_prime);
+	if(sd != -1) {
 		// address was found remove it
 		close(sd);
 		// remove from array
