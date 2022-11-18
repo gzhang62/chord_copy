@@ -89,8 +89,10 @@ uint64_t get_hash(char *buffer);
 void receive_successor_request(int sd, ChordMessage *message);
 void receive_successor_response(int sd, ChordMessage *message);
 
-Node *closest_preceding_node(uint64_t id);
-int closest_preceding_node_index(uint64_t id);
+Node *closest_preceding_node(uint64_t id); //TODO remove
+Node *send_to_closest_preceding_node(ChordMessage *message);
+Node *send_to_entry(Node *node_array[], int index, ChordMessage *message);
+
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
 // init callback linked list, node n
@@ -117,6 +119,7 @@ ChordMessage *receive_message(int sd);
 
 // message functions
 void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg);
+
 
 void connect_send_find_successor_response(Node *original_node, uint32_t query_id);
 void send_get_successor_list_response(int sd);

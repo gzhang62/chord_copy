@@ -10,6 +10,7 @@
 #include <fcntl.h> // for open
 #include <unistd.h> // for close
 #include <netinet/tcp.h>
+#include <netdb.h>
 
 #include "chord_arg_parser.h"
 #include "chord.h"
@@ -177,11 +178,26 @@ void init_global(struct chord_arguments chord_args) {
 	UNUSED(spret);
 	// set num_successors
 	num_successors = chord_args.num_successors;
+
 	// set n
 	n.port = chord_args.my_address.sin_port;
-	n.address = chord_args.my_address.sin_addr.s_addr;
+	// get host address
+	// always uses the first entry in host_entries, I hope that's okay
+	//n.address = chord_args.my_address.sin_addr.s_addr;
+	char hostbuffer[256];
+    if(gethostname(hostbuffer, sizeof(hostbuffer)) < 0) {
+		exit_error("gethostname() failed");
+	}
+    struct hostent *host_entry = gethostbyname(hostbuffer);
+	assert(host_entry->h_length > 0);
+	struct in_addr* host_inaddr = ((struct in_addr*) host_entry->h_addr_list[0]); 
+	n.address = host_inaddr->s_addr;
+
 	ctx = sha1sum_create(NULL, 0);
 	n.key = get_node_hash(&n);
+
+	LOG("This node: {%s}\n",display_node(&n));
+
 	// initialize callback
 	InitDQ(callback_list, Callback);
 	assert(callback_list);
@@ -258,33 +274,9 @@ void receive_successor_request(int sd, ChordMessage *message) {
 			// It doesn't really matter if the node fails here
 		}
 	} else {
-		int send_ret = -1, nprime_index, nprime_sd;
-		Node *nprime;
-
 		// Pass along the message to the node closest to the destination
 		// Keep on trying to send until we find a node to which we can send 
-		while(true) {
-			nprime_index = closest_preceding_node_index(id);
-			if(nprime_index == -1) { // current node is the closest
-				//TODO unsure if this the appropriate thing to do in this case
-
-			} else {
-				nprime = finger[nprime_index];
-				//assert(nprime != NULL);
-				// Get nprime's socket 
-				nprime_sd = get_socket(nprime);		
-				send_ret = send_message(nprime_sd, message);
-				if(send_ret == -1) {
-					// The node is failed, remove from the structures
-					// and move to the next one
-					free(nprime);
-					finger[nprime_index] = NULL;
-				} else {
-					// We've sent a message
-					break;
-				}
-			}
-		}
+		send_to_closest_preceding_node(message);
 	}
 }
 
@@ -305,12 +297,18 @@ void receive_successor_response(int sd, ChordMessage *message) {
 
 /**
  * Find the index into the finger table containing
- * the closest preceding node. Return -1 if the
- * closest preceding node is the current node.
+ * the closest preceding node and forward the result there.
+ * Loosely corresponds to closest_preceding_node from paper.
+ * Return the node to which we passed along the message, or
+ * NULL if something went wrong.
  * @author Adam
  * @author Gary 
  */
-int closest_preceding_node_index(uint64_t id) {
+Node *send_to_closest_preceding_node(ChordMessage *message) {
+	LOG("send_to_closest_preceding_node\n");
+	assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ);
+	uint64_t id = message->r_find_succ_req->key;
+
 	/* "A modified version of the closest preceding node procedure...
 	   searches not only the finger table but also the successor list 
 	   for the most immediate predecessor of id. In addition,
@@ -320,13 +318,45 @@ int closest_preceding_node_index(uint64_t id) {
 	   among the nodes in the finger table and the successor list." "*/
 	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
 		if(finger[i] != NULL && (n.key < finger[i]->key && finger[i]->key < id)) {
-			return i;
+			Node *result = send_to_entry(finger, i, message);
+			if(result != NULL) {
+				return result;
+			}
 		}
 	}
-	/*for(int i = 0; i < num_successors; i++) {
+	// We couldn't send it to any of the nodes in the finger table; try the successors next
+	// TODO obviously redundant code
+	for(int i = 0; i < num_successors; i++) {
+		// Try to send the message to the node in the successor array
+		Node *result = send_to_entry(successors, i, message);
+		if(result != NULL) {
+			return result;
+		}
+	}
+	return NULL;
+}
 
-	}*/
-	return -1;
+/**
+ * Try to pass along the message to node_array[index],
+ * remove the value if it doesn't work properly.
+ * Return the entry to which we passed along the message.
+ * @author Adam
+*/
+Node *send_to_entry(Node *node_array[], int index, ChordMessage *message) {
+	int nprime_sd = get_socket(node_array[index]);		
+	if(nprime_sd == -2) {
+		//exit_error("fingers[] or successors[] contains our own address, somehow.");
+		//TODO
+	} else if(nprime_sd == -1) {
+		exit_error("No socket associated with entry in node_array or node_index");
+	}
+	int send_ret = send_message(nprime_sd, message);
+	if(send_ret == -1) {
+		// The node is failed, remove from the structures and move on
+		free(node_array[index]);
+		node_array[index] = NULL;
+	}
+	return node_array[index];
 }
 
 /**
@@ -366,29 +396,10 @@ int send_message(int sd, ChordMessage *message) {
 	int amount_sent, ret_val = 0;
 	//message->version = 417;
 
-	// TODO: Check if sd is -1;
 	if(sd == -1) {
-		// find succ has looped on itself, construct a chord response
-		// Construct response
-		ChordMessage resp_mess;
-		RFindSuccResp resp;
-		Node succ;
-		chord_message__init(&resp_mess);
-		r_find_succ_resp__init(&resp);
-		node__init(&succ);
-		// TODO do we need to free these? 
-		// set node
-		succ.key = n.key;
-		succ.address = n.address;
-		succ.port = n.port;
-		// resp.key = message;
-		resp.node = &succ;
+		
+	} else if(sd == -2) {
 
-		resp_mess.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;
-		resp_mess.r_find_succ_resp = &resp;
-		resp_mess.has_query_id = true;
-		resp_mess.query_id = message->query_id;
-		do_callback(&resp_mess);
 	} else {
 		// Pack and send message
 		int64_t len = chord_message__get_packed_size(message);
@@ -495,7 +506,7 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
 	request.key = id;
 	request.requester = &requester;		
 
-	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;
+	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ;
 	message.r_find_succ_req = &request;
 	message.has_query_id = true;
 	message.query_id = query_id;
@@ -743,7 +754,7 @@ int read_process_input(FILE *fd) {
  * Look up the given key and output the function 
  * @author Adam
  * @param key key to look up
- * @return 
+ * @return 0 if success, -1 if failure (theoretically)
  */
 int lookup(char *key) {
 	//printf("Lookup not implemented\n");
@@ -1040,7 +1051,7 @@ int check_predecessor() {
 void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
 	if(check_time(&last_stabilize, sp)) {
-		stabilize();
+		//stabilize();
 		// printf("Stabilize\n");
 		// fflush(stdout);
 		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function above
@@ -1148,10 +1159,15 @@ int delete_socket(Node *n_prime) {
  * Given the node (containing an address), iterate through clients
  * and look for a socket connected to that address. 
  * @author Adam
- * @return -1 if there isn't an associated socket for the given node's
- * address, else return the socket descriptor.
+ * @return -1 if there isn't an associated socket for the given node's address, 
+ * -2 if the node matches the current node, else return the socket descriptor.
  */
 int get_socket(Node *node) {
+	// TODO: is this node the current node?
+	// If so, return -2.
+	if((node->address == n.address) && (node->port == n.port)) {
+		return -2;
+	}
 	//Extract address from node
 	struct sockaddr_in node_address;
 	memset(&node_address, 0, sizeof(node_address));
@@ -1159,7 +1175,9 @@ int get_socket(Node *node) {
 	node_address.sin_family = AF_INET;
 	node_address.sin_addr.s_addr = node->address;
 	node_address.sin_port = node->port;
-	
+
+	//LOG("given: %s", inet_ntoa(node_address.sin_addr));
+
 	// Set up structures for iteration below
 	struct sockaddr_in sd_address;
 	memset(&sd_address, 0, sizeof(sd_address));
