@@ -448,6 +448,10 @@ void connect_send_find_successor_response(Node *original_node, uint32_t query_id
 	delete_socket(original_node);
 }
 
+/**
+ * Send an (empty) response to the socket from which we got the
+ * notify (with the given query id).
+ */
 void send_notify_response_socket(int sd, uint32_t query_id) {
 	ChordMessage message;
 	NotifyResponse response;
@@ -886,7 +890,7 @@ int check_predecessor() {
 void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
 	if(check_time(&last_stabilize, sp)) {
-		// stabilize()
+		stabilize();
 		// printf("Stabilize\n");
 		// fflush(stdout);
 		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function above
@@ -895,7 +899,7 @@ void check_periodic(int cpp, int ffp, int sp) {
 	if(wait_check_predecessor.tv_sec == 0) {
 		// we have no ongoing check predecessor
 		if(check_time(&last_check_predecessor, cpp)) {
-			// check_predecessor()
+			check_predecessor();
 			// printf("Check Predecessor\n");
 			// fflush(stdout);
 			clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
@@ -908,7 +912,7 @@ void check_periodic(int cpp, int ffp, int sp) {
 	}
 
 	if(check_time(&last_fix_fingers, ffp)) {
-		// fix_fingers()
+		fix_fingers();
 		// printf("Fix fingers\n");
 		// fflush(stdout);
 		clock_gettime(CLOCK_REALTIME, &last_fix_fingers); // should go into function above
