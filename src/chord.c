@@ -254,6 +254,7 @@ void receive_successor_request(int sd, ChordMessage *message) {
 		}
 	} else {
 		Node *nprime = closest_preceding_node(id);	
+		assert(nprime != NULL);
 		// Get nprime's socket
 		int nprime_sd = get_socket(nprime); 
 		// Pass along the message to the next one in line
@@ -375,7 +376,7 @@ ChordMessage *receive_message(int sd) {
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	// TODO try other successors
 	int successor_sd = get_socket(successors[0]);
-	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %d[%d], to sd %d\n",id,func,arg,successor_sd);
+	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %d(%d), to sd %d\n",id,callback_name[func],arg,successor_sd);
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
@@ -480,7 +481,7 @@ void send_get_precedessor_response_socket(int sd, uint32_t query_id) {
 	response.node = predecessor;
 
 	message.msg_case = CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE;
-	message.notify_response = &response;
+	message.get_predecessor_response = &response;
 	message.has_query_id = true;
 	message.query_id = query_id;
 
