@@ -9,6 +9,7 @@
 #include <math.h>
 #include <fcntl.h> // for open
 #include <unistd.h> // for close
+#include <netinet/tcp.h>
 
 #include "chord_arg_parser.h"
 #include "chord.h"
@@ -32,6 +33,9 @@ int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds
 char address_string_buffer[40]; // for displaying addresses
 char node_string_buffer[80]; 	// for displaying nodes
 static char *callback_name[] = {"NONE", "PRINT_LOOKUP", "JOIN", "FIX_FINGERS"};
+
+// TODO constant saying how long TCP connection waits before giving up
+const int user_timeout = 5000;
 
 // Num successors
 uint8_t num_successors;
@@ -118,14 +122,14 @@ int main(int argc, char *argv[]) {
 		FD_SET(0, &readset);			// add stdin
 		maxfd = server_fd;
 
+		// Add all clients to readset, find maximum # clients
 		for(int i = 0; i < MAX_CLIENTS; i++) {
-			if(clients[i] == 0) {
-				break;
+			if(clients[i] != 0) {
+				FD_SET(clients[i], &readset); 
 			}
 			if(clients[i] > maxfd) {
 				maxfd = clients[i];
 			}
-			FD_SET(clients[i], &readset); 
 		}
 		timeout.tv_sec = 1;
 		timeout.tv_usec = 0;
@@ -251,14 +255,36 @@ void receive_successor_request(int sd, ChordMessage *message) {
 		} else {	
 			// Construct and send FindSuccessorResponse
 			connect_send_find_successor_response(original_node, query_id);
+			// It doesn't really matter if the node fails here
 		}
 	} else {
-		Node *nprime = closest_preceding_node(id);	
-		assert(nprime != NULL);
-		// Get nprime's socket
-		int nprime_sd = get_socket(nprime); 
-		// Pass along the message to the next one in line
-		send_message(nprime_sd, message);
+		int send_ret = -1, nprime_index, nprime_sd;
+		Node *nprime;
+
+		// Pass along the message to the node closest to the destination
+		// Keep on trying to send until we find a node to which we can send 
+		while(true) {
+			nprime_index = closest_preceding_node_index(id);
+			if(nprime_index == -1) { // current node is the closest
+				//TODO unsure if this the appropriate thing to do in this case
+
+			} else {
+				nprime = finger[nprime_index];
+				//assert(nprime != NULL);
+				// Get nprime's socket 
+				nprime_sd = get_socket(nprime);		
+				send_ret = send_message(nprime_sd, message);
+				if(send_ret == -1) {
+					// The node is failed, remove from the structures
+					// and move to the next one
+					free(nprime);
+					finger[nprime_index] = NULL;
+				} else {
+					// We've sent a message
+					break;
+				}
+			}
+		}
 	}
 }
 
@@ -275,6 +301,32 @@ void receive_successor_response(int sd, ChordMessage *message) {
 	// The callback table tells us what function to use
 	// TODO
 	do_callback(message);
+}
+
+/**
+ * Find the index into the finger table containing
+ * the closest preceding node. Return -1 if the
+ * closest preceding node is the current node.
+ * @author Adam
+ * @author Gary 
+ */
+int closest_preceding_node_index(uint64_t id) {
+	/* "A modified version of the closest preceding node procedure...
+	   searches not only the finger table but also the successor list 
+	   for the most immediate predecessor of id. In addition,
+	   the pseudocode needs to be enhanced to handle node failures.
+	   If a node fails during the find successor procedure, the lookup
+	   proceeds, after a timeout, by trying the next best predecessor
+	   among the nodes in the finger table and the successor list." "*/
+	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
+		if(finger[i] != NULL && (n.key < finger[i]->key && finger[i]->key < id)) {
+			return i;
+		}
+	}
+	/*for(int i = 0; i < num_successors; i++) {
+
+	}*/
+	return -1;
 }
 
 /**
@@ -311,7 +363,7 @@ Node **get_successor_list() {
  * @return -1 if failure, 0 if success
  */
 int send_message(int sd, ChordMessage *message) {
-	int amount_sent;
+	int amount_sent, ret_val = 0;
 	//message->version = 417;
 
 	// TODO: Check if sd is -1;
@@ -322,7 +374,7 @@ int send_message(int sd, ChordMessage *message) {
 		RFindSuccResp resp;
 		Node succ;
 		chord_message__init(&resp_mess);
-		r_find_succ_req__init(&resp);
+		r_find_succ_resp__init(&resp);
 		node__init(&succ);
 		// TODO do we need to free these? 
 		// set node
@@ -343,20 +395,28 @@ int send_message(int sd, ChordMessage *message) {
 		void *buffer = malloc(len);
 		chord_message__pack(message, buffer);
 
-		// First send length, then send message
+		// First send length...
 		int64_t belen = htobe64(len); 
 		amount_sent = send(sd, &belen, sizeof(len), 0);
 		LOG("Sent %d, tried to send %ld\n", amount_sent, sizeof(len));
-		assert(amount_sent == sizeof(len));
-
-		amount_sent = send(sd, buffer, len, 0);
-		LOG("Sent %d, tried to send %ld\n", amount_sent, len);
-		assert(amount_sent == len);
-
+		if(amount_sent != sizeof(len)) { //node failure, probably?
+			LOG("socket %d failure in send_message\n",sd);
+			ret_val = -1;
+		} else {
+			// ...then send the actual message
+			amount_sent = send(sd, buffer, len, 0);
+			LOG("Sent %d, tried to send %ld\n", amount_sent, len);
+			if(amount_sent != len) {
+				LOG("socket %d failure in send_message\n",sd);
+				ret_val = -1;				
+			} else {
+				LOG("Sent message [socket %d] \n",sd);
+				ret_val = 0;
+			}
+		}	
 		free(buffer);
-		LOG("Sent message [socket %d] \n",sd);
-		return 0;
 	}
+	return ret_val;
 }
 
 /**
@@ -401,7 +461,7 @@ ChordMessage *receive_message(int sd) {
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	// TODO try other successors
 	int successor_sd = get_socket(successors[0]);
-	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %d(%d), to sd %d\n",id,func,arg,successor_sd);
+	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %s(%d), to sd %d\n",id,callback_name[func],arg,successor_sd);
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
@@ -451,8 +511,15 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
  * @param original_node the node which first made the recursive FindSuccessor request 
  */
 void connect_send_find_successor_response(Node *original_node, uint32_t query_id) {
-	// create new temp socket
-	int original_sd = add_socket(original_node);
+	// create new temp socket, or use the previous socket if it exists
+	int extant_socket = get_socket(original_node), original_sd;
+	bool socket_already_exists = (extant_socket != -1);
+	if(extant_socket != -1) {
+		original_sd = extant_socket;
+	} else {
+		original_sd = add_socket(original_node); 
+		// should return existing socket if it exists, so this is a bit redundant
+	}
 
 	// send node
 	ChordMessage message;
@@ -471,7 +538,10 @@ void connect_send_find_successor_response(Node *original_node, uint32_t query_id
 
 	send_message(original_sd, &message);
 
-	delete_socket(original_node);
+	// If we created the socket specifically for this connection, then remove it
+	if(!socket_already_exists) {
+		delete_socket(original_node);
+	}
 }
 
 /**
@@ -942,7 +1012,7 @@ int check_predecessor() {
 	} else {
 		// construct and send a chec_predecessor message to predecessor
 		int sd = get_socket(predecessor);
-		assert(sd != -1);
+		assert(sd != -1); // TODO is there another case where this isn't so?
 
 		// construct chord message check predecessor
 		CheckPredecessorRequest request;
@@ -951,7 +1021,8 @@ int check_predecessor() {
 		message.msg_case = CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST;		
 		message.check_predecessor_request = &request;
 
-		send_message(sd, &message);
+		int send_ret = send_message(sd, &message);
+		UNUSED(send_ret);
 		// start timer
 		clock_gettime(CLOCK_REALTIME, &wait_check_predecessor);
 
@@ -1023,9 +1094,24 @@ int add_socket(Node *n_prime) {
 			exit_error("Could not make socket");
 		}
 		// set to be reusable 
-		if (setsockopt(new_sock, SOL_SOCKET, SO_REUSEPORT, &(int){1}, sizeof(int)) < 0) {
-    		exit_error("setsockopt(SO_REUSEADDR) failed");
+		if(setsockopt(new_sock, SOL_SOCKET, SO_REUSEPORT, &(int){1}, sizeof(int)) < 0) {
+    		exit_error("setsockopt(SO_REUSEPORT) failed");
 		}
+
+		// reduce TCP timeout wait	
+		if(setsockopt(new_sock, SOL_SOCKET, TCP_USER_TIMEOUT, &user_timeout, sizeof(int)) < 0) {
+    		exit_error("setsockopt(TCP_USER_TIMEOUT) failed");
+		}
+		// set to be nonblocking
+		// https://stackoverflow.com/a/6206705/19678321
+		/*
+		int flags = fcntl(new_sock ,F_GETFL, 0);
+		assert(flags != -1);
+		if(fcntl(new_sock, F_SETFL, O_NONBLOCK) < 0) {
+			exit_error("fnctl(O_NONBLOCK) failed");
+		}
+		*/
+
 		LOG("socket made [socket %d]\n",new_sock);
 		// connect new socket to peer
 		if(connect(new_sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
@@ -1038,7 +1124,7 @@ int add_socket(Node *n_prime) {
 }
 
 /**
- * Add to global address to socket mapping
+ * Remove from global address to socket mapping
  * @author Gary
  * @author Adam
  * @param n_prime Node whose address we want to map to a socket
@@ -1085,6 +1171,7 @@ int get_socket(Node *node) {
 			len = sizeof(sd_address);
 			// Use getsockname to find the address, compare to node_address
 			getsockname(clients[i], (struct sockaddr *) &sd_address, &len);
+			printf("clients[%d] = %d: %s", i, clients[i], inet_ntoa(sd_address.sin_addr));
 			if((sd_address.sin_addr.s_addr == node_address.sin_addr.s_addr) &&
 			(sd_address.sin_port == node_address.sin_port)) {
 				return clients[i];

@@ -90,6 +90,7 @@ void receive_successor_request(int sd, ChordMessage *message);
 void receive_successor_response(int sd, ChordMessage *message);
 
 Node *closest_preceding_node(uint64_t id);
+int closest_preceding_node_index(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
 // init callback linked list, node n
