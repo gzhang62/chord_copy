@@ -31,6 +31,7 @@ int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds
 
 char address_string_buffer[40]; // for displaying addresses
 char node_string_buffer[80]; 	// for displaying nodes
+static char *callback_name[] = {"NONE", "PRINT_LOOKUP", "JOIN", "FIX_FINGERS"};
 
 // Num successors
 uint8_t num_successors;
@@ -62,9 +63,13 @@ void node_to_address(Node *node, struct sockaddr_in *out_sockaddr) {
  */
 char *display_node(Node *node) {
 	memset(node_string_buffer,0,sizeof(node_string_buffer));
-	struct sockaddr_in addr;
-	node_to_address(node, &addr);
-	sprintf(node_string_buffer, "%" PRIu64 " %s", node->key, display_address(addr));
+	if(node == NULL) {
+		sprintf(node_string_buffer, "NULL");
+	} else {
+		struct sockaddr_in addr;
+		node_to_address(node, &addr);
+		sprintf(node_string_buffer, "%" PRIu64 " %s", node->key, display_address(addr));
+	}
 	return node_string_buffer;
 }
 
@@ -139,8 +144,8 @@ int main(int argc, char *argv[]) {
 			}	
 
 			if(FD_ISSET(0, &readset)) {
-				// handle stdin command
-				// read_process_input(server_fd);
+				// handle input command
+				read_process_input(stdin);
 			} 
 
 			for(int i = 0; i < MAX_CLIENTS; i++) {
@@ -352,7 +357,7 @@ ChordMessage *receive_message(int sd) {
 	// Read actual message
 	void *buffer = malloc(message_size);
 	amount_read = read(sd, buffer, message_size);
-	printf("Received %d, expected %ld\n",amount_read, message_size);
+	LOG("Received %d, expected %ld\n",amount_read, message_size);
 	assert((unsigned long) amount_read == message_size);
 
 	// Unpack message
@@ -373,7 +378,7 @@ ChordMessage *receive_message(int sd) {
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	// TODO try other successors
 	int successor_sd = get_socket(successors[0]);
-	LOG("Send Find Succ Request(id: %" PRIu64 ", callback %d[%d]\n",id,func,arg);
+	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %d[%d], to sd %d\n",id,func,arg,successor_sd);
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
@@ -455,7 +460,7 @@ int add_callback(CallbackFunction func, int arg) {
 	struct Callback callback = {NULL, NULL, func, query_id, arg};
 	struct Callback *cb_ptr = &callback;
 	InsertDQ(callback_list, cb_ptr);
-	LOG("Added %d, args %d -> query_id %d\n", func, arg, query_id);
+	LOG("add callback %s(%d) -> query_id %d\n", callback_name[func], arg, query_id);
 	return query_id;
 }
 
@@ -473,7 +478,8 @@ int do_callback(ChordMessage *message) {
 		}
 	}
 	Node *node = message->find_successor_response->node;
-	LOG("callback %d, args %d",curr->func,curr->arg);
+	char *callback_func_name = (curr->func < sizeof(callback_name) ? callback_name[curr->func] : "<error>");
+	LOG("do callback %s(%d)",callback_func_name,curr->arg);
 	switch(curr->func) {
 		case CALLBACK_PRINT_LOOKUP: ;
 			callback_print_lookup(node);
@@ -522,7 +528,7 @@ int read_process_input(FILE *fd) {
 	int ret;
 	// Take input, parse into command
 	size_t size = 1;
-	char *input = (char *) malloc(size), *command, *key;
+	char *input = (char *) malloc(size * sizeof(char)), *command, *key;	
 	int bytes_read = getline(&input, &size, fd); // Assuming fd is stdin
 
 	if(bytes_read < 0) { // read error
@@ -531,7 +537,7 @@ int read_process_input(FILE *fd) {
 	    perror("No command provided\n"); ret = -1;
 	} else {
     	input[size-2] = '\0'; //remove newline
-    	command = strtok_r(input, " ",&key);
+    	command = strtok_r(input, " ", &key);
 	    //input before first space is in command, input after is in key
 		//(key is empty string if there is no space)
 	    //printf("COMMAND: [%s], KEY: [%s]", command, key);
@@ -611,13 +617,13 @@ uint64_t get_hash(char *buffer) {
 
 //TODO
 int print_state() {
-	printf("Self %s\n", display_node(&n));
+	printf("< Self %s\n", display_node(&n));
 	//TODO should I start from zero or one?
 	for(int i = 0; i < num_successors; i++) {
-		printf("Successor [%d] %s", i+1, display_node(successors[i]));
+		printf("< Successor [%d] %s\n", i+1, display_node(successors[i]));
 	}
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
-		printf("Finger [%d] %s", i+1, display_node(finger[i]));
+		printf("< Finger [%d] %s\n", i+1, display_node(finger[i]));
 	}
 	return 0;
 }
