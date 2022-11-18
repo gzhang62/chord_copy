@@ -33,8 +33,7 @@ char address_string_buffer[40]; // for displaying addresses
 char node_string_buffer[80]; 	// for displaying nodes
 static char *callback_name[] = {"NONE", "PRINT_LOOKUP", "JOIN", "FIX_FINGERS"};
 
-// Num successors
-uint8_t num_successors;
+
 
 /**
  * Format the given address in the form "<address> <port>", store in the 
@@ -206,10 +205,10 @@ int read_process_node(int sd)	{
 			send_get_precedessor_response_socket(sd, message->query_id);
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST: ;
-			//TODO
+			send_get_precedessor_response_socket(sd, message->query_id);
 			break;
 		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST: ;
-			//TODO
+			send_get_successor_list_response(sd);
 			break;
 		// Deal with responses
 		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: ;
@@ -292,6 +291,7 @@ Node *closest_preceding_node(uint64_t id) {
 
 Node **get_successor_list() {
 	//TODO
+	send_successor_list_request();
 	return NULL;
 }
 
@@ -407,9 +407,7 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
 	requester.address = n.address;
 	requester.port = n.port;
 	request.key = id;
-	request.requester = &requester;		// TODO: not sure if requester is correct
-
-	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;
+	request.requester = &requester;		
 	message.r_find_succ_req = &request;
 	message.has_query_id = true;
 	message.query_id = query_id;
@@ -427,7 +425,6 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
 void connect_send_find_successor_response(Node *original_node, uint32_t query_id) {
 	// create new temp socket
 	int original_sd = add_socket(original_node);
-
 	// send node
 	ChordMessage message;
 	RFindSuccResp response; 
@@ -463,6 +460,46 @@ void send_notify_response_socket(int sd, uint32_t query_id) {
 }
 
 /**
+ * Send successor list to asking socket descriptor
+ * @author Gary
+ * @param sd socket descriptor to send over
+ */
+void send_get_successor_list_response(int sd) {
+	ChordMessage message;
+	GetSuccessorListResponse resp;
+	chord_message__init(&message);
+	get_successor_list_response__init(&resp);
+
+	resp.n_successors = num_successors;
+	resp.successors = (Node **)successors; // TODO: may not be correct
+	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE;
+	message.get_successor_list_response = &resp;
+	message.has_query_id = false;
+
+	send_message(sd, &message);
+}
+
+/**
+ * Ask successor/successors for their successor list
+ * @author Gary
+ */
+void send_successor_list_request() {
+	// TODO: adapt to successor list
+	int sd = get_socket(successors[0]);
+	// 
+	ChordMessage message;
+	GetSuccessorListRequest req;
+	chord_message__init(&message);
+	get_successor_list_request__init(&req);
+
+	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST;
+	message.get_successor_list_request = &req;
+	message.has_query_id = false;
+
+	send_message(sd, &message);
+}
+
+/**
  * Send this node's predecessor as a message over socket sd 
  * (with the given query query_id). 
  * @author Adam
@@ -476,7 +513,7 @@ void send_get_precedessor_response_socket(int sd, uint32_t query_id) {
 	response.node = predecessor;
 
 	message.msg_case = CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE;
-	message.notify_response = &response;
+	message.get_predecessor_response = &response;
 	message.has_query_id = true;
 	message.query_id = query_id;
 
@@ -627,6 +664,7 @@ int callback_print_lookup(Node *result) {
 	printf("> "); // waiting for next user input
 	return 0;
 }
+
 
 /**
  * Return hash of given node.
