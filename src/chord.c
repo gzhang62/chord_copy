@@ -754,6 +754,10 @@ int setup_server(int server_port) {
 		exit_error("Failed to create socket");
 	}
 
+	if(setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &(int){1}, sizeof(int)) < 0) {
+		exit_error("setsockopt(SO_REUSEADDR) failed");
+	}
+
 	// zero out addr struct
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
