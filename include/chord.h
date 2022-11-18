@@ -33,6 +33,10 @@ typedef struct Message
  */
 void printKey(uint64_t key);
 
+uint64_t get_node_hash(Node *n);
+uint64_t get_hash(char *buffer);
+
+// Stuff we created
 /* Global Variables */
 Node n; // initialize on creation of node
 Node *predecessor;
@@ -49,10 +53,8 @@ struct timespec wait_check_predecessor= {0, 0}; // 0 when there is no check pred
 struct sha1sum_ctx *ctx;
 struct Callback *callback_list;
 
-uint64_t get_node_hash(Node *n);
-uint64_t get_hash(char *buffer);
-
-// Stuff we created
+// Num successors
+uint8_t num_successors;
 
 typedef enum {
     CALLBACK_NONE = 0,
@@ -112,9 +114,12 @@ int read_process_input(FILE *fd);                   // stdin fd
 int send_message(int sd, ChordMessage *message);    
 ChordMessage *receive_message(int sd);
 
+// message functions
 void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg);
 
 void connect_send_find_successor_response(Node *original_node, uint32_t query_id);
+void send_get_successor_list_response(int sd);
+void send_successor_list_request();
 void send_notify_response_socket(int sd, uint32_t query_id);
 void send_get_precedessor_response_socket(int sd, uint32_t query_id);
 

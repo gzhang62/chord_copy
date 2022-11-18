@@ -206,10 +206,10 @@ int read_process_node(int sd)	{
 			send_get_precedessor_response_socket(sd, message->query_id);
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST: ;
-			//TODO
+			send_get_precedessor_response_socket(sd, message->query_id);
 			break;
 		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST: ;
-			//TODO
+			send_get_successor_list_response(sd);
 			break;
 		// Deal with responses
 		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: ;
@@ -293,6 +293,7 @@ Node *closest_preceding_node(uint64_t id) {
 
 Node **get_successor_list() {
 	//TODO
+	send_successor_list_request();
 	return NULL;
 }
 
@@ -408,7 +409,7 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
 	requester.address = n.address;
 	requester.port = n.port;
 	request.key = id;
-	request.requester = &requester;		// TODO: not sure if requester is correct
+	request.requester = &requester;		
 
 	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;
 	message.r_find_succ_req = &request;
@@ -463,6 +464,46 @@ void send_notify_response_socket(int sd, uint32_t query_id) {
 	message.notify_response = &response;
 	message.has_query_id = true;
 	message.query_id = query_id;
+
+	send_message(sd, &message);
+}
+
+/**
+ * Send successor list to asking socket descriptor
+ * @author Gary
+ * @param sd socket descriptor to send over
+ */
+void send_get_successor_list_response(int sd) {
+	ChordMessage message;
+	GetSuccessorListResponse resp;
+	chord_message__init(&message);
+	get_successor_list_response__init(&resp);
+
+	resp.n_successors = num_successors;
+	resp.successors = (Node **)successors; // TODO: may not be correct
+	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE;
+	message.get_successor_list_response = &resp;
+	message.has_query_id = false;
+
+	send_message(sd, &message);
+}
+
+/**
+ * Ask successor/successors for their successor list
+ * @author Gary
+ */
+void send_successor_list_request() {
+	// TODO: adapt to successor list
+	int sd = get_socket(successors[0]);
+	// 
+	ChordMessage message;
+	GetSuccessorListRequest req;
+	chord_message__init(&message);
+	get_successor_list_request__init(&req);
+
+	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST;
+	message.get_successor_list_request = &req;
+	message.has_query_id = false;
 
 	send_message(sd, &message);
 }
@@ -632,6 +673,7 @@ int callback_print_lookup(Node *result) {
 	printf("> "); // waiting for next user input
 	return 0;
 }
+
 
 /**
  * Return hash of given node.
