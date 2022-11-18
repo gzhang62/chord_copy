@@ -408,6 +408,7 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
 	requester.port = n.port;
 	request.key = id;
 	request.requester = &requester;		
+	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ;
 	message.r_find_succ_req = &request;
 	message.has_query_id = true;
 	message.query_id = query_id;
