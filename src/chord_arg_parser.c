@@ -13,8 +13,15 @@ error_t chord_parser(int key, char *arg, struct argp_state *state) {
 	case 'p':
 	{
 		/* Validate that port is correct and a number, etc!! */
+		int invalid = 0;
+		for(int i =0; i < (int) strlen(arg); i++) {
+			if(!isdigit(arg[i])) {
+				invalid = 1;
+				break;
+			}
+		}
 		uint16_t port = atoi(arg);
-		if (0 /* port is invalid */) {
+		if (port < 1024 || invalid) {
 			argp_error(state, "Invalid option for a port, must be a number");
 		}
 		args->my_address.sin_family = AF_INET;
@@ -39,8 +46,17 @@ error_t chord_parser(int key, char *arg, struct argp_state *state) {
 	case 301:
 	{
 		/* Validate that port is correct and a number, etc!! */
+		int invalid = 0;
+		for(int i =0; i < (int) strlen(arg); i++) {
+			if(!isdigit(arg[i])) {
+				invalid = 1;
+				break;
+			}
+		}
+
 		uint16_t port = atoi(arg);
-		if (0 /* port is invalid */) {
+
+		if (port < 1024 || invalid) {
 			argp_error(state, "Invalid option for a port, must be a number");
 		}
         args->join_address.sin_port = htons(port);
@@ -50,8 +66,15 @@ error_t chord_parser(int key, char *arg, struct argp_state *state) {
     // --sp stablize period
     case 400:
 	{
+		int invalid = 0;
+		for(int i =0; i < (int) strlen(arg); i++) {
+			if(!isdigit(arg[i])) {
+				invalid = 1;
+				break;
+			}
+		}
         int ts_arg = atoi(arg);
-        if (0 /*number is invalid*/) {
+        if (invalid || ts_arg < 1 || ts_arg > 60) {
 			argp_error(state, "Invalid option for a stablize period");
         } else {
             args->stablize_period = (uint16_t)ts_arg;
@@ -62,8 +85,15 @@ error_t chord_parser(int key, char *arg, struct argp_state *state) {
     // --ffp fix fingers period
     case 401:
 	{
+		int invalid = 0;
+		for(int i =0; i < (int) strlen(arg); i++) {
+			if(!isdigit(arg[i])) {
+				invalid = 1;
+				break;
+			}
+		}
         int ts_arg = atoi(arg);
-        if (0 /*number is invalid*/) {
+        if (invalid || ts_arg < 1 || ts_arg > 60) {
 			argp_error(state, "Invalid option for a fix fingers period");
         } else {
             args->fix_fingers_period = (uint16_t)ts_arg;
@@ -74,8 +104,15 @@ error_t chord_parser(int key, char *arg, struct argp_state *state) {
     // --cpp check precedessor period
     case 402:
 	{
+		int invalid = 0;
+		for(int i =0; i < (int) strlen(arg); i++) {
+			if(!isdigit(arg[i])) {
+				invalid = 1;
+				break;
+			}
+		}
         int ts_arg = atoi(arg);
-        if (0 /*number is invalid*/) {
+        if (invalid || ts_arg < 1 || ts_arg > 60) {
 			argp_error(state, "Invalid option for a check predecessor period");
         } else {
             args->check_predecessor_period = (uint16_t)ts_arg;
@@ -86,10 +123,18 @@ error_t chord_parser(int key, char *arg, struct argp_state *state) {
     // --successors, -r number of sucessors
     case 'r':
 	{
-        if (0 /*string is an invalid identification*/) {
+		int invalid = 0;
+		for(int i =0; i < (int) strlen(arg); i++) {
+			if(!isdigit(arg[i])) {
+				invalid = 1;
+				break;
+			}
+		}
+		uint8_t rarg = (uint8_t)atoi(arg);
+        if (invalid || rarg < 1 || rarg > 32) {
 			argp_error(state, "Invalid option for successor count");
         } else {
-            args->num_successors = (uint8_t)atoi(arg);
+            args->num_successors = rarg;
         }
 		break;
 	}
