@@ -1,0 +1,5 @@
+*.o
+protobuf/*.pb-c.*
+*~ 
+chord
+example_hash
