@@ -191,36 +191,35 @@ void init_global(struct chord_arguments chord_args) {
 int read_process_node(int sd)	{
 	int return_value = -1;
 
+	LOG("Receive message from %d:\n",sd);
 	ChordMessage *message = receive_message(sd);
-	LOG("Receive message from %d\n",sd);
 	// Decide what to do based on message case
 	switch(message->msg_case) {
 		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
-			//TODO
+			send_notify_response_socket(sd, message->query_id);
 			break;
 		case CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ: ;
 			receive_successor_request(sd, message);
 			break;
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST: ;
-			//TODO
+			send_get_precedessor_response_socket(sd, message->query_id);
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST: ;
-			send_check_predecessor_response(sd);
+			send_get_precedessor_response_socket(sd, message->query_id);
 			break;
 		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST: ;
 			send_get_successor_list_response(sd);
 			break;
+		// Deal with responses
 		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: ;
-			receive_successor_response(sd, message);
-			break;
+			//receive_successor_response(sd, message);
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: ;
-			//TODO
-			break;
 		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE: ;
-			//TODO
-			break;
 		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE: ;
-			//TODO
+			//assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP);
+			//TODO we're not actually using the type of message in the responses, whoopss
+			assert(message->has_query_id);	
+			do_callback(message);
 			break;
 		default:
 			exit_error("The given message didn't have a valid request set\n");
@@ -264,7 +263,6 @@ void receive_successor_request(int sd, ChordMessage *message) {
 /**
  * After receiving, do a callback
  * @author Adam
- * @return NULL if forwarded, otherwise, the successor
  */
 void receive_successor_response(int sd, ChordMessage *message) {
 	// We received this directly from the desired node
@@ -398,19 +396,18 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
 	// Construct response
 	ChordMessage message;
 	RFindSuccReq request;
-	Node requestor;
+	Node requester;
 	chord_message__init(&message);
 	r_find_succ_req__init(&request);
-	node__init(&requestor);
+	node__init(&requester);
 	
 	// TODO do we need to free these? 
-	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;		
 	// set node
-	requestor.key = n.key;
-	requestor.address = n.address;
-	requestor.port = n.port;
+	requester.key = n.key;
+	requester.address = n.address;
+	requester.port = n.port;
 	request.key = id;
-	request.requester = &requestor;		
+	request.requester = &requester;		
 	message.r_find_succ_req = &request;
 	message.has_query_id = true;
 	message.query_id = query_id;
@@ -434,9 +431,10 @@ void connect_send_find_successor_response(Node *original_node, uint32_t query_id
 	// Not using the macros because they cause some warnings
 	chord_message__init(&message);
 	r_find_succ_resp__init(&response);
-	response.node = &n;
-	// TODO do we need to free these? 
 
+	response.node = &n;
+
+	// TODO do we need to free these? 
 	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;		
 	message.r_find_succ_resp = &response;
 	message.has_query_id = true;
@@ -445,6 +443,20 @@ void connect_send_find_successor_response(Node *original_node, uint32_t query_id
 	send_message(original_sd, &message);
 
 	delete_socket(original_node);
+}
+
+void send_notify_response_socket(int sd, uint32_t query_id) {
+	ChordMessage message;
+	NotifyResponse response;
+	chord_message__init(&message);
+	notify_response__init(&response);
+
+	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_RESPONSE;
+	message.notify_response = &response;
+	message.has_query_id = true;
+	message.query_id = query_id;
+
+	send_message(sd, &message);
 }
 
 /**
@@ -488,22 +500,26 @@ void send_successor_list_request() {
 }
 
 /**
- * Send back a check predecessor response after a check predecessor request
- * @author Gary
- * @param sd socket descriptor to send over
+ * Send this node's predecessor as a message over socket sd 
+ * (with the given query query_id). 
+ * @author Adam
  */
-void send_check_predecessor_response(int sd) {
+void send_get_precedessor_response_socket(int sd, uint32_t query_id) {
 	ChordMessage message;
-	CheckPredecessorResponse resp;
+	GetPredecessorResponse response;
 	chord_message__init(&message);
-	check_predecessor_response__init(&resp);
+	get_predecessor_response__init(&response);
 
-	message.msg_case = CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE;
-	message.check_predecessor_response = &resp;
-	message.has_query_id = false;
+	response.node = predecessor;
+
+	message.msg_case = CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE;
+	message.get_predecessor_response = &response;
+	message.has_query_id = true;
+	message.query_id = query_id;
 
 	send_message(sd, &message);
 }
+
 /**
  * Create and assign the callback into the array.
  * @author Adam
@@ -534,7 +550,7 @@ int do_callback(ChordMessage *message) {
 	}
 	Node *node = message->find_successor_response->node;
 	char *callback_func_name = (curr->func < sizeof(callback_name) ? callback_name[curr->func] : "<error>");
-	LOG("do callback %s(%d)",callback_func_name,curr->arg);
+	LOG("do callback %s(%d)\n",callback_func_name,curr->arg);
 	switch(curr->func) {
 		case CALLBACK_PRINT_LOOKUP: ;
 			callback_print_lookup(node);
@@ -908,7 +924,7 @@ int check_predecessor() {
 void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
 	if(check_time(&last_stabilize, sp)) {
-		stabilize();
+		// stabilize()
 		// printf("Stabilize\n");
 		// fflush(stdout);
 		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function above
@@ -917,7 +933,7 @@ void check_periodic(int cpp, int ffp, int sp) {
 	if(wait_check_predecessor.tv_sec == 0) {
 		// we have no ongoing check predecessor
 		if(check_time(&last_check_predecessor, cpp)) {
-			check_predecessor();
+			// check_predecessor()
 			// printf("Check Predecessor\n");
 			// fflush(stdout);
 			clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
@@ -930,7 +946,7 @@ void check_periodic(int cpp, int ffp, int sp) {
 	}
 
 	if(check_time(&last_fix_fingers, ffp)) {
-		fix_fingers();
+		// fix_fingers()
 		// printf("Fix fingers\n");
 		// fflush(stdout);
 		clock_gettime(CLOCK_REALTIME, &last_fix_fingers); // should go into function above

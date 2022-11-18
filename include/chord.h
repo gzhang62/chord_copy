@@ -116,10 +116,13 @@ ChordMessage *receive_message(int sd);
 
 // message functions
 void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg);
+
 void connect_send_find_successor_response(Node *original_node, uint32_t query_id);
-void send_check_predecessor_response(int sd);
 void send_get_successor_list_response(int sd);
 void send_successor_list_request();
+void send_notify_response_socket(int sd, uint32_t query_id);
+void send_get_precedessor_response_socket(int sd, uint32_t query_id);
+
 
 ChordMessage *smessage(int sd);
 
