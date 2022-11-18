@@ -284,7 +284,7 @@ void receive_successor_response(int sd, ChordMessage *message) {
  */
 Node *closest_preceding_node(uint64_t id) {
 	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
-		if(n.key < finger[i]->key && finger[i]->key < id) {
+		if(finger[i] != NULL && (n.key < finger[i]->key && finger[i]->key < id)) {
 			return finger[i];
 		}
 	}
@@ -315,24 +315,48 @@ int send_message(int sd, ChordMessage *message) {
 	//message->version = 417;
 
 	// TODO: Check if sd is -1;
-	// Pack and send message
-	int64_t len = chord_message__get_packed_size(message);
-	void *buffer = malloc(len);
-	chord_message__pack(message, buffer);
+	if(sd == -1) {
+		// find succ has looped on itself, construct a chord response
+		// Construct response
+		ChordMessage resp_mess;
+		RFindSuccResp resp;
+		Node succ;
+		chord_message__init(&resp_mess);
+		r_find_succ_req__init(&resp);
+		node__init(&succ);
+		// TODO do we need to free these? 
+		// set node
+		succ.key = n.key;
+		succ.address = n.address;
+		succ.port = n.port;
+		// resp.key = message;
+		resp.node = &succ;
 
-	// First send length, then send message
-	int64_t belen = htobe64(len); 
-	amount_sent = send(sd, &belen, sizeof(len), 0);
-	LOG("Sent %d, tried to send %ld\n", amount_sent, sizeof(len));
-	assert(amount_sent == sizeof(len));
+		resp_mess.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;
+		resp_mess.r_find_succ_resp = &resp;
+		resp_mess.has_query_id = true;
+		resp_mess.query_id = message->query_id;
+		do_callback(&resp_mess);
+	} else {
+		// Pack and send message
+		int64_t len = chord_message__get_packed_size(message);
+		void *buffer = malloc(len);
+		chord_message__pack(message, buffer);
 
-	amount_sent = send(sd, buffer, len, 0);
-	LOG("Sent %d, tried to send %ld\n", amount_sent, len);
-	assert(amount_sent == len);
+		// First send length, then send message
+		int64_t belen = htobe64(len); 
+		amount_sent = send(sd, &belen, sizeof(len), 0);
+		LOG("Sent %d, tried to send %ld\n", amount_sent, sizeof(len));
+		assert(amount_sent == sizeof(len));
 
-	free(buffer);
-	LOG("Sent message [socket %d] \n",sd);
-	return 0;
+		amount_sent = send(sd, buffer, len, 0);
+		LOG("Sent %d, tried to send %ld\n", amount_sent, len);
+		assert(amount_sent == len);
+
+		free(buffer);
+		LOG("Sent message [socket %d] \n",sd);
+		return 0;
+	}
 }
 
 /**
@@ -377,7 +401,7 @@ ChordMessage *receive_message(int sd) {
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	// TODO try other successors
 	int successor_sd = get_socket(successors[0]);
-	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %d(%d), to sd %d\n",id,callback_name[func],arg,successor_sd);
+	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %d(%d), to sd %d\n",id,func,arg,successor_sd);
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
@@ -537,8 +561,10 @@ void send_get_precedessor_response_socket(int sd, uint32_t query_id) {
  */
 int add_callback(CallbackFunction func, int arg) {
 	int query_id = rand();
-	struct Callback callback = {NULL, NULL, func, query_id, arg};
-	struct Callback *cb_ptr = &callback;
+	struct Callback *cb_ptr = malloc(sizeof(struct Callback));
+	cb_ptr->func = func;
+	cb_ptr->arg = arg;
+	cb_ptr->query_id = query_id;
 	InsertDQ(callback_list, cb_ptr);
 	LOG("add callback %s(%d) -> query_id %d\n", callback_name[func], arg, query_id);
 	return query_id;
@@ -557,7 +583,7 @@ int do_callback(ChordMessage *message) {
 			break;
 		}
 	}
-	Node *node = message->find_successor_response->node;
+	Node *node = message->r_find_succ_resp->node;
 	char *callback_func_name = (curr->func < sizeof(callback_name) ? callback_name[curr->func] : "<error>");
 	LOG("do callback %s(%d)\n",callback_func_name,curr->arg);
 	switch(curr->func) {
@@ -910,21 +936,27 @@ void callback_fix_fingers(Node *node, int arg) {
 int check_predecessor() {
 	ChordMessage message;
 	
-	int sd = get_socket(predecessor);
-	assert(sd != -1);
+	if(predecessor == NULL) {
+		// predecessor is already null
+		return -1;
+	} else {
+		// construct and send a chec_predecessor message to predecessor
+		int sd = get_socket(predecessor);
+		assert(sd != -1);
 
-	// construct chord message check predecessor
-	CheckPredecessorRequest request;
-	chord_message__init(&message);
-	check_predecessor_request__init(&request);
-	message.msg_case = CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST;		
-	message.check_predecessor_request = &request;
+		// construct chord message check predecessor
+		CheckPredecessorRequest request;
+		chord_message__init(&message);
+		check_predecessor_request__init(&request);
+		message.msg_case = CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST;		
+		message.check_predecessor_request = &request;
 
-	send_message(sd, &message);
-	// start timer
-	clock_gettime(CLOCK_REALTIME, &wait_check_predecessor);
+		send_message(sd, &message);
+		// start timer
+		clock_gettime(CLOCK_REALTIME, &wait_check_predecessor);
 
-	return 0;
+		return 0;
+	}
 }
 
 /**
