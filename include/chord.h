@@ -93,7 +93,7 @@ Node *closest_preceding_node(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
 // init callback linked list, node n
-void init_global(struct chord_arguments chord_args);
+void init_global(struct chord_arguments chord_args, int serverfd);
 int create();
 int join(struct sockaddr_in join_addr);
 void callback_join(Node *node, int arg);

@@ -9,6 +9,7 @@
 #include <math.h>
 #include <fcntl.h> // for open
 #include <unistd.h> // for close
+#include <netdb.h>
 
 #include "chord_arg_parser.h"
 #include "chord.h"
@@ -99,7 +100,7 @@ int main(int argc, char *argv[]) {
 
 	server_fd = setup_server(my_address.sin_port);
 
-	init_global(chord_args);
+	init_global(chord_args, server_fd);
 	//printf("%d:%d\n",chord_args.join_address.sin_addr.s_addr,chord_args.join_address.sin_port);
 	// node is being created
 	if(join_address.sin_port == 0) {
@@ -164,7 +165,7 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-void init_global(struct chord_arguments chord_args) {
+void init_global(struct chord_arguments chord_args, int serverfd) {
 	int cpret = clock_gettime(CLOCK_REALTIME, &last_check_predecessor);
 	int ffret = clock_gettime(CLOCK_REALTIME, &last_fix_fingers);
 	int spret = clock_gettime(CLOCK_REALTIME, &last_stabilize);
@@ -173,9 +174,12 @@ void init_global(struct chord_arguments chord_args) {
 	UNUSED(spret);
 	// set num_successors
 	num_successors = chord_args.num_successors;
-	// set n
+	// set n address
+	struct sockaddr_in server_addr;
+	getsockname(serverfd, (struct sockddr *) &server_addr, sizeof(server_addr));
+
+	n.address = inet_addr("127.0.0.1"); // TODO: Change this
 	n.port = chord_args.my_address.sin_port;
-	n.address = chord_args.my_address.sin_addr.s_addr;
 	ctx = sha1sum_create(NULL, 0);
 	n.key = get_node_hash(&n);
 	// initialize callback
@@ -787,7 +791,7 @@ int setup_server(int server_port) {
 	// zero out addr struct
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // TODO: change this
 	server_addr.sin_port = (unsigned short) server_port;		
 
 	// bind socket to address
@@ -799,7 +803,7 @@ int setup_server(int server_port) {
 	if(listen(server_fd, MAX_CLIENTS) < 0) {
 		exit_error("Failed to listen on socket");
 	}
-
+	LOG("Server setup on: {%s}\n", display_address(server_addr));
 	return server_fd;
 }
 
