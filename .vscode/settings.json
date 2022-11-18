@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "inttypes.h": "c",
+        "system_error": "c",
+        "stdlib.h": "c",
+        "thread": "c"
+    }
+}
