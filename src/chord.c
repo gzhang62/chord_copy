@@ -561,7 +561,7 @@ int send_get_successor_list_request(int sd) {
 
 	message.has_query_id = true;
 	message.query_id = query_id;
-	message.msg_case = CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST;
+	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST;
 	message.get_successor_list_request = &req;
 
 	return send_message(sd, &message);
