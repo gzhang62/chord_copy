@@ -217,7 +217,9 @@ void init_global(struct chord_arguments chord_args) {
 	// set num_successors
 	num_successors = chord_args.num_successors;
 
+
 	// set n
+	node__init(&n);
 	n.port = chord_args.my_address.sin_port;
 	// get host address
 	// always uses the first entry in host_entries, I hope that's okay
@@ -261,9 +263,9 @@ void init_global(struct chord_arguments chord_args) {
 int read_process_node(int sd)	{
 	int return_value = -1;
 
-	LOG("Receive [socket %d]: ",sd);
-	LOG("%s -> ", display_peer_address(sd));
-	LOG("%s\n", display_socket_address(sd));
+	// LOG("Receive [socket %d]: ",sd);
+	// LOG("%s -> ", display_peer_address(sd));
+	// LOG("%s\n", display_socket_address(sd));
 
 	ChordMessage *message = receive_message(sd);
 	return_value = handle_message(sd, message);
@@ -306,7 +308,7 @@ void receive_successor_request(int sd, ChordMessage *message) {
 			callback_print_lookup(&n);
 		} else {	
 			// Construct and send FindSuccessorResponse
-			LOG("connect_send_find_successor_response(%d,%" PRIu32 ")\n",original_node->key,query_id);
+			//LOG("connect_send_find_successor_response(%d,%" PRIu32 ")\n",original_node->key,query_id);
 			connect_send_find_successor_response(message);
 			// It doesn't really matter if the node fails here
 		}
@@ -518,9 +520,9 @@ int send_message(int sd, ChordMessage *message) {
 				LOG("socket %d failure in send_message\n",sd);
 				ret_val = -1;				
 			} else {
-				LOG("Sent [socket %d]: ",sd);
-				LOG("%s -> ", display_socket_address(sd));
-				LOG("%s\n", display_peer_address(sd));
+				// LOG("Sent [socket %d]: ",sd);
+				// LOG("%s -> ", display_socket_address(sd));
+				// LOG("%s\n", display_peer_address(sd));
 				ret_val = 0;
 			}
 		}	
@@ -773,11 +775,17 @@ void send_get_successor_list_response(int sd, uint32_t query_id) {
 
 	// Construct the successor list and copy over the non-NULL entries
 	resp.n_successors = num_non_null_successors;
-	resp.successors = (Node **) malloc(sizeof(Node *) * num_non_null_successors);
+	resp.successors = (Node **) calloc(num_non_null_successors, sizeof(Node *));
 	int j = 0;
 	for(int i = 0; i < (int) resp.n_successors; i++) {
 		if(successors[i] != NULL) {
-			resp.successors[j++] = successors[i];
+			// Copy over the values into whole new memory locations and copy over values as well
+			resp.successors[j] = calloc(1, sizeof(Node));
+			node__init(resp.successors[j]);
+			resp.successors[j]->address = successors[i]->address;
+			resp.successors[j]->address = successors[i]->address;
+			resp.successors[j]->key = successors[i]->key;
+			j++;
 		}
 	}
 
@@ -787,6 +795,10 @@ void send_get_successor_list_response(int sd, uint32_t query_id) {
 	message.query_id = query_id;
 
 	send_message(sd, &message);
+	// Free memory
+	for(int j = 0; j < resp.n_successors; j++) {
+		free(resp.successors[j]);
+	}
 	free(resp.successors);
 }
 
@@ -1103,8 +1115,8 @@ int handle_connection(int sd) {
 	struct sockaddr_in client_address;
 	socklen_t len = sizeof(client_address);
 	int client_fd = accept(sd, (struct sockaddr *)&client_address, &len);
-	LOG("got %d/%d bytes -> socket %d, handled connection: {%s}\n", 
-		len, sizeof(client_address), client_fd, display_address(client_address));
+	// LOG("got %d/%d bytes -> socket %d, handled connection: {%s}\n", 
+	// 	len, sizeof(client_address), client_fd, display_address(client_address));
 	return client_fd;
 }
 
