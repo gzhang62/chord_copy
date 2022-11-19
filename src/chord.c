@@ -10,10 +10,7 @@
 #include <fcntl.h> // for open
 #include <unistd.h> // for close
 #include <netinet/tcp.h>
-<<<<<<< HEAD
-=======
 #include <netdb.h>
->>>>>>> read_hanging
 
 #include "chord_arg_parser.h"
 #include "chord.h"
@@ -277,39 +274,9 @@ void receive_successor_request(int sd, ChordMessage *message) {
 			// It doesn't really matter if the node fails here
 		}
 	} else {
-<<<<<<< HEAD
-		int send_ret = -1, nprime_index, nprime_sd;
-		Node *nprime;
-
-		// Pass along the message to the node closest to the destination
-		// Keep on trying to send until we find a node to which we can send 
-		while(true) {
-			nprime_index = closest_preceding_node_index(id);
-			if(nprime_index == -1) { // current node is the closest
-				//TODO unsure if this the appropriate thing to do in this case
-
-			} else {
-				nprime = finger[nprime_index];
-				//assert(nprime != NULL);
-				// Get nprime's socket 
-				nprime_sd = get_socket(nprime);		
-				send_ret = send_message(nprime_sd, message);
-				if(send_ret == -1) {
-					// The node is failed, remove from the structures
-					// and move to the next one
-					free(nprime);
-					finger[nprime_index] = NULL;
-				} else {
-					// We've sent a message
-					break;
-				}
-			}
-		}
-=======
 		// Pass along the message to the node closest to the destination
 		// Keep on trying to send until we find a node to which we can send 
 		send_to_closest_preceding_node(message);
->>>>>>> read_hanging
 	}
 }
 
@@ -330,14 +297,6 @@ void receive_successor_response(int sd, ChordMessage *message) {
 
 /**
  * Find the index into the finger table containing
-<<<<<<< HEAD
- * the closest preceding node. Return -1 if the
- * closest preceding node is the current node.
- * @author Adam
- * @author Gary 
- */
-int closest_preceding_node_index(uint64_t id) {
-=======
  * the closest preceding node and forward the result there.
  * Loosely corresponds to closest_preceding_node from paper.
  * Return the node to which we passed along the message, or
@@ -350,7 +309,6 @@ Node *send_to_closest_preceding_node(ChordMessage *message) {
 	assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ);
 	uint64_t id = message->r_find_succ_req->key;
 
->>>>>>> read_hanging
 	/* "A modified version of the closest preceding node procedure...
 	   searches not only the finger table but also the successor list 
 	   for the most immediate predecessor of id. In addition,
@@ -360,15 +318,6 @@ Node *send_to_closest_preceding_node(ChordMessage *message) {
 	   among the nodes in the finger table and the successor list." "*/
 	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
 		if(finger[i] != NULL && (n.key < finger[i]->key && finger[i]->key < id)) {
-<<<<<<< HEAD
-			return i;
-		}
-	}
-	/*for(int i = 0; i < num_successors; i++) {
-
-	}*/
-	return -1;
-=======
 			Node *result = send_to_entry(finger, i, message);
 			if(result != NULL) {
 				return result;
@@ -408,7 +357,6 @@ Node *send_to_entry(Node *node_array[], int index, ChordMessage *message) {
 		node_array[index] = NULL;
 	}
 	return node_array[index];
->>>>>>> read_hanging
 }
 
 /**
@@ -449,7 +397,6 @@ int send_message(int sd, ChordMessage *message) {
 	//message->version = 417;
 
 	if(sd == -1) {
-<<<<<<< HEAD
 		// find succ has looped on itself, construct a chord response
 		// Construct response
 		ChordMessage resp_mess;
@@ -471,11 +418,9 @@ int send_message(int sd, ChordMessage *message) {
 		resp_mess.has_query_id = true;
 		resp_mess.query_id = message->query_id;
 		do_callback(&resp_mess);
-=======
 		
 	} else if(sd == -2) {
 
->>>>>>> read_hanging
 	} else {
 		// Pack and send message
 		int64_t len = chord_message__get_packed_size(message);
@@ -1188,7 +1133,6 @@ int add_socket(Node *n_prime) {
 		// reduce TCP timeout wait	
 		if(setsockopt(new_sock, SOL_SOCKET, TCP_USER_TIMEOUT, &user_timeout, sizeof(int)) < 0) {
     		exit_error("setsockopt(TCP_USER_TIMEOUT) failed");
-<<<<<<< HEAD
 		}
 		// set to be nonblocking
 		// https://stackoverflow.com/a/6206705/19678321
@@ -1198,17 +1142,6 @@ int add_socket(Node *n_prime) {
 		if(fcntl(new_sock, F_SETFL, O_NONBLOCK) < 0) {
 			exit_error("fnctl(O_NONBLOCK) failed");
 		}
-=======
-		}
-		// set to be nonblocking
-		// https://stackoverflow.com/a/6206705/19678321
-		/*
-		int flags = fcntl(new_sock ,F_GETFL, 0);
-		assert(flags != -1);
-		if(fcntl(new_sock, F_SETFL, O_NONBLOCK) < 0) {
-			exit_error("fnctl(O_NONBLOCK) failed");
-		}
->>>>>>> read_hanging
 		*/
 
 		LOG("socket made [socket %d]\n",new_sock);

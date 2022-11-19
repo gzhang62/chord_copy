@@ -89,15 +89,10 @@ uint64_t get_hash(char *buffer);
 void receive_successor_request(int sd, ChordMessage *message);
 void receive_successor_response(int sd, ChordMessage *message);
 
-<<<<<<< HEAD
-Node *closest_preceding_node(uint64_t id);
-int closest_preceding_node_index(uint64_t id);
-=======
 Node *closest_preceding_node(uint64_t id); //TODO remove
 Node *send_to_closest_preceding_node(ChordMessage *message);
 Node *send_to_entry(Node *node_array[], int index, ChordMessage *message);
 
->>>>>>> read_hanging
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
 // init callback linked list, node n
