@@ -757,10 +757,22 @@ void send_get_successor_list_response(int sd, uint32_t query_id) {
 int send_get_predecessor_response_socket(int sd, uint32_t query_id) {
 	ChordMessage message;
 	GetPredecessorResponse response;
+	Node temp;
 	chord_message__init(&message);
 	get_predecessor_response__init(&response);
+	node__init(&temp);
+	
+	if(predecessor == NULL) {
+		temp.address = 0;
+		temp.key = 0;
+		temp.port = 0;
+	} else {
+		temp.address = predecessor->address;
+		temp.port = predecessor->port;
+		temp.key = predecessor->key;
+	}
 
-	response.node = predecessor;
+	response.node = &temp;
 
 	message.msg_case = CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE;
 	message.get_predecessor_response = &response;
@@ -1290,9 +1302,9 @@ int add_socket(Node *n_prime) {
 		}
 
 		// reduce TCP timeout wait	
-		if(setsockopt(new_sock, SOL_SOCKET, TCP_USER_TIMEOUT, &user_timeout, sizeof(int)) < 0) {
-    		exit_error("setsockopt(TCP_USER_TIMEOUT) failed");
-		}
+		// if(setsockopt(new_sock, SOL_SOCKET, TCP_USER_TIMEOUT, &user_timeout, sizeof(int)) < 0) {
+    	// 	exit_error("setsockopt(TCP_USER_TIMEOUT) failed");
+		// }
 		// set to be nonblocking
 		// https://stackoverflow.com/a/6206705/19678321
 		/*
@@ -1344,6 +1356,9 @@ int delete_socket(Node *n_prime) {
 int get_socket(Node *node) {
 	// TODO: is this node the current node?
 	// If so, return -2.
+	if(node == NULL) {
+		return -1;
+	}
 	if((node->address == n.address) && (node->port == n.port)) {
 		return -2;
 	}
