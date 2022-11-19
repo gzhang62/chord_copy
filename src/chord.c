@@ -1127,7 +1127,9 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 			send_get_predecessor_request(sd);
 		}
 		successors[0] = successor_predecessor;
- 	}
+ 	} 
+
+	send_notify_request(successors[0]);
 	return 1;
 }
 
@@ -1141,11 +1143,17 @@ int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors) {
 int send_notify_request(Node *nprime) {
 	ChordMessage message;
 	NotifyRequest request;
+	Node temp_n;
 	int successor_socket = get_socket(nprime);
 	chord_message__init(&message);
 	notify_request__init(&request);
-	
-	request.node = &n;
+	node__init(&temp_n);
+
+	temp_n.address = n.address;
+	temp_n.key = n.key;
+	temp_n.port = n.port;
+
+	request.node = &temp_n;
 	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_REQUEST;		
 	message.notify_request = &request;
 	message.has_query_id = true;
