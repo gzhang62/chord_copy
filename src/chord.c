@@ -254,7 +254,7 @@ int read_process_node(int sd)	{
 			//assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP);
 			//TODO we're not actually using the type of message in the responses, whoopss
 			assert(message->has_query_id);	
-			do_callback(message);
+			receive_notify_response(sd, message);
 			break;
 		default:
 			exit_error("The given message didn't have a valid request set\n");
@@ -262,6 +262,16 @@ int read_process_node(int sd)	{
 
 	chord_message__free_unpacked(message,NULL);
 	return return_value;
+}
+
+void receive_notify_response(int sd, ChordMessage *message) {
+	Node *node = message->notify_request->node;
+	if(predecessor == NULL || in_mod_range(node->key,predecessor->key+1,n.key-1)) {
+		if(predecessor == NULL) {
+			predecessor = malloc(sizeof(Node));
+		}
+		memcpy(predecessor,node,sizeof(Node));
+	}
 }
 
 /** 
@@ -1115,6 +1125,7 @@ int send_notify_request(Node *nprime) {
 	int successor_socket = get_socket(nprime);
 	chord_message__init(&message);
 	notify_request__init(&request);
+	
 	request.node = &n;
 	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_REQUEST;		
 	message.notify_request = &request;
@@ -1348,7 +1359,7 @@ int get_socket(Node *node) {
 		if(clients[i] != 0) {
 			len = sizeof(sd_address);
 			// I apologize for this horrendous hack. -Adam
-			
+
 			// Use getsockname to find the address, compare to node_address
 			getpeername(clients[i], (struct sockaddr *) &sd_address, &len);
 			//LOG("clients[%d] = %d: {%s}\n", i, clients[i], display_address(sd_address));
