@@ -1,17 +1,3 @@
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-#include <time.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <math.h>
-#include <fcntl.h> // for open
-#include <unistd.h> // for close
-#include <netinet/tcp.h>
-#include <netdb.h>
-
 #include "chord_arg_parser.h"
 #include "chord.h"
 #include "hash.h"
@@ -19,6 +5,7 @@
 
 #define VERBOSE true
 
+// Love you Bobby :)
 void LOG(const char *template, ...) {
   if (VERBOSE) { 
 	va_list ap;
@@ -28,64 +15,26 @@ void LOG(const char *template, ...) {
   }
 }
 
+Node n; // initialize on creation of node
+Node *predecessor;
+Node *finger[NUM_BYTES_IDENTIFIER];
+
+Node *successors[MAX_SUCCESSORS];
+uint8_t num_successors; // Num successors
+
+int clients[MAX_CLIENTS]; 		// keep track of fds, if fd is present in clients, fds[i] = 1 else fds[i] = 0
 int num_clients;
-int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds[i] = 1 else fds[i] = 0
 
-char address_string_buffer[40]; // for displaying addresses
-char node_string_buffer[80]; 	// for displaying nodes
-static char *callback_name[] = {"NONE", "PRINT_LOOKUP", "JOIN", "FIX_FINGERS", "CALLBACK_STABILIZE_GET_PREDECESSOR", "CALLBACK_STABILIZE_GET_SUCCESSOR_LIST"};
+char address_string_buffer[40];  // for displaying addresses
+char node_string_buffer[80]; 	 // for displaying nodes
+char callback_string_buffer[40]; // for displaying callback
 
+// Length of a Chord Node or item key
+const uint8_t KEY_LEN = 8;
 // TODO constant saying how long TCP connection waits before giving up
-const int user_timeout = 5000;
-
-// Num successors
-uint8_t num_successors;
-
-/**
- * Format the given address in the form "<address> <port>", store in the 
- * variable `address_string_buffer`, and return its address.
- */
-char *display_address(struct sockaddr_in address) {
-	memset(address_string_buffer,0,sizeof(address_string_buffer));
-	sprintf(address_string_buffer, "%s %d", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
-	return address_string_buffer;
-}
-
-/* Min function */
-int min(int a, int b) {
-	return (a > b) ? b : a;
-}
-
-/**
- * Copy the address/port from the given node into the memory address
- * at the given sockaddr_in pointer.
- */
-void node_to_address(Node *node, struct sockaddr_in *out_sockaddr) {
-	memset(out_sockaddr, 0, sizeof(struct sockaddr_in));
-	out_sockaddr->sin_family = AF_INET;
-	out_sockaddr->sin_addr.s_addr = node->address;
-	out_sockaddr->sin_port = node->port;
-}
-
-/**
- * Format the given node in the form "<node hash> <address> <port>", store in the 
- * variable `node_string_buffer`, and return its address.
- */
-char *display_node(Node *node) {
-	memset(node_string_buffer,0,sizeof(node_string_buffer));
-	if(node == NULL) {
-		sprintf(node_string_buffer, "NULL");
-	} else {
-		struct sockaddr_in addr;
-		node_to_address(node, &addr);
-		sprintf(node_string_buffer, "%" PRIu64 " %s", node->key, display_address(addr));
-	}
-	return node_string_buffer;
-}
-
-void printKey(uint64_t key) {
-	printf("%" PRIu64, key);
-}
+const int user_timeout = 5000;	
+// Array used for printing out the callback name (see below)
+char *callback_name[] = {"NONE", "PRINT_LOOKUP", "JOIN", "FIX_FINGERS", "CALLBACK_STABILIZE_GET_PREDECESSOR", "CALLBACK_STABILIZE_GET_SUCCESSOR_LIST"};
 
 int main(int argc, char *argv[]) {
 
@@ -239,27 +188,23 @@ int read_process_node(int sd)	{
 			break;
 		// Deal with responses
 		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: 
-			receive_successor_response(sd, message);
+			parse_find_successor_response(sd, message);
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: 
-			receive_check_predecessor_response();
+			parse_check_predecessor_response();
 			break;
 		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE: 
-			receive_get_successor_list_response(sd, message);
+			parse_get_successor_list_response(sd, message);
 			break;
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE:
-			receive_get_predecessor_response(sd, message);
+			parse_get_predecessor_response(sd, message);
 			break;
 		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE: ;
-			//assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP);
-			//TODO we're not actually using the type of message in the responses, whoopss
-			assert(message->has_query_id);	
-			receive_notify_response(sd, message);
+			parse_notify_response(sd, message);
 			break;
 		default:
 			exit_error("The given message didn't have a valid request set\n");
 	}
-
 	chord_message__free_unpacked(message,NULL);
 	return return_value;
 }
@@ -280,12 +225,12 @@ void receive_notify_response(int sd, ChordMessage *message) {
 
 /** 
  * Does a request for the successor which should store the given node.
- * (The result will be gotten back at some point and processed with receive_successor_response.)
+ * (The result will be gotten back at some point and processed with parse_find_successor_response.)
  * @author Adam
  * @param sd the socket for the node which requested successor; -1 if initiated by user
  * @param message Message received
  */
-void receive_successor_request(int sd, ChordMessage *message) {
+void parse_find_successor_request(int sd, ChordMessage *message) {
 	uint64_t id = message->r_find_succ_req->key;
 	assert(message->has_query_id);
 	uint32_t query_id = message->query_id;
@@ -311,25 +256,12 @@ void receive_successor_request(int sd, ChordMessage *message) {
 	}
 }
 
-/** Check whether the value is between a and b mod 2^64.
- * TODO doesn't work with different sized keys.
- */
-bool in_mod_range(uint64_t key, uint64_t a, uint64_t b) {
-    uint64_t max_id = (uint64_t) -1;
-    printf("%lu",max_id);
-	if(a < b) {
-		return (a <= key && key <= b);
-	} else { // b < a
-		//return (a <= key && key <= max_id) || (0 <= key && key <= b);
-		return (a <= key && key <= max_id) || (key <= b);
-	}
-}
 
 /**
  * After receiving, do a callback
  * @author Adam
  */
-void receive_successor_response(int sd, ChordMessage *message) {
+void parse_find_successor_response(int sd, ChordMessage *message) {
 	// We received this directly from the desired node
 	UNUSED(sd);
 	assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP);
@@ -340,12 +272,13 @@ void receive_successor_response(int sd, ChordMessage *message) {
 	do_callback(message);
 }
 
-void receive_check_predecessor_response() {
+void parse_check_predecessor_response() {
 	// if we have received then predecessor is alive, zero out timestamp
-	printf("balls");
+	LOG("balls"); // Blame Gary for this line. -Adam
 }
 
-void receive_get_predecessor_response(int sd, ChordMessage *message) {
+void parse_get_predecessor_response(int sd, ChordMessage *message) {
+	UNUSED(sd);
 	assert(message->msg_case == CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE);
 	assert(message->has_query_id);
 
@@ -356,7 +289,7 @@ void receive_get_predecessor_response(int sd, ChordMessage *message) {
 }
 
 
-void receive_get_successor_list_response(int sd, ChordMessage *message) {
+void parse_get_successor_list_response(int sd, ChordMessage *message) {
 	UNUSED(sd);
 	assert(message->msg_case == CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE);
 
@@ -447,9 +380,101 @@ Node *closest_preceding_node(uint64_t id) {
 	return &n;
 }
 
-///////////////
-// Auxiliary //
-///////////////
+/**
+ * Connect to the address in request_node and send the response (i.e. the current node)
+ * to request_node, with the given query_id.
+ * @author Adam
+ * @author Gary
+ * @param original_node the node which first made the recursive FindSuccessor request 
+ */
+void connect_send_find_successor_response(ChordMessage *message_in) {
+	assert(message_in->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ);
+	assert(message_in->has_query_id);
+	Node *original_node = message_in->r_find_succ_req->requester;
+
+	// create new temp socket, or use the previous socket if it exists
+	int extant_socket = get_socket(original_node), original_sd;
+	//bool socket_already_exists = (extant_socket != -1);
+	if(extant_socket != -1) {
+		original_sd = extant_socket;
+	} else {
+		original_sd = add_socket(original_node); 
+		// should return existing socket if it exists, so this is a bit redundant
+	}
+
+    send_find_successor_response(original_sd, message_in);
+
+
+	// If we created the socket specifically for this connection, then remove it
+	// if(!socket_already_exists) {
+	// 	delete_socket(original_node);
+	// }
+}
+
+////////////////////////////
+// Dealing with callbacks //
+////////////////////////////
+
+/**
+ * Create and assign the callback into the array.
+ * @author Adam
+ * @author Gary
+ * @return The location of the callback in the callback_array (query id)
+ */
+int add_callback(CallbackFunction func, int arg) {
+	int query_id = rand();
+	struct Callback *cb_ptr = malloc(sizeof(struct Callback));
+	cb_ptr->func = func;
+	cb_ptr->arg = arg;
+	cb_ptr->query_id = query_id;
+	InsertDQ(callback_list, cb_ptr);
+	LOG("add callback %s -> query_id %d\n", display_callback(func, arg), query_id);
+	return query_id;
+}
+
+/**
+ * @author Adam
+ * @author Gary
+ */
+int do_callback(ChordMessage *message) {
+	assert(message->has_query_id);
+	struct Callback *curr;
+	// find callback
+	for(curr = callback_list->next; curr != callback_list; curr = curr->next) {
+		if(curr->query_id == message->query_id) {
+			break;
+		}
+	}
+	Node *node = message->r_find_succ_resp->node;
+	LOG("do callback %s",display_callback(curr->func,curr->arg));
+	switch(curr->func) {
+		case CALLBACK_PRINT_LOOKUP: ;
+			callback_print_lookup(node);
+			break;
+		case CALLBACK_JOIN: ;
+			// Set successors[callback.arg] to the given node
+			callback_join(node, curr->arg);	
+			break;
+		case CALLBACK_FIX_FINGERS: ;
+			callback_fix_fingers(node, curr->arg);
+			break;
+		case CALLBACK_STABILIZE_GET_PREDECESSOR: ;
+			// callback_get_predecessor();
+			break;
+		case CALLBACK_NONE: ;
+			break;
+		default: ;
+			exit_error("Callback provided with unknown function enum");
+	}
+	
+	// TODO: Remove from callback array
+	//callback_array[message->query_id];
+	return 0;
+}
+
+//////////////////
+// Send/receive //
+//////////////////
 
 /**
  * Given a ChordMessage, it is packed and transmitted
@@ -573,7 +598,7 @@ ChordMessage *receive_message(int sd) {
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	// TODO try other successors
 	int successor_sd = get_socket(successors[0]);
-	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %s(%d), to sd %d\n",id,callback_name[func],arg,successor_sd);
+	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %s, to sd %d\n",id, display_callback(func,arg), successor_sd);
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
@@ -610,13 +635,14 @@ int send_get_successor_list_request(int sd) {
 /**
  * Construct and send the *initial* ChordMessage FindSuccessorRequest.
  * The result will be caught in receive_find_successor_request.
+ * Also adds a callback.
  * @author Adam
  * @param sd Socket we send to
  * @param id ID which we are looking for
  * @param func the callback function that we're doing
  * @param arg the argument for the callback function
  */
-void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg) {
+int send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg) {
 
 	// Add a callback which will be referenced when we receive a final response
 	int query_id = add_callback(func, arg);
@@ -642,33 +668,12 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
 	message.has_query_id = true;
 	message.query_id = query_id;
 
-	send_message(sd, &message);
+	return send_message(sd, &message);
 }
 
-/**
- * Connect to the address in request_node and send the response (i.e. the current node)
- * to request_node, with the given query_id.
- * @author Adam
- * @author Gary
- * @param original_node the node which first made the recursive FindSuccessor request 
- */
-void connect_send_find_successor_response(ChordMessage *message_in) {
-	assert(message_in->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ);
-	assert(message_in->has_query_id);
-	Node *original_node = message_in->r_find_succ_req->requester;
-	uint64_t id = message_in->r_find_succ_req->key;
+int send_find_successor_response(int sd, ChordMessage *message_in) {
+    uint64_t id = message_in->r_find_succ_req->key;
 	uint32_t query_id = message_in->query_id;
-
-
-	// create new temp socket, or use the previous socket if it exists
-	int extant_socket = get_socket(original_node), original_sd;
-	bool socket_already_exists = (extant_socket != -1);
-	if(extant_socket != -1) {
-		original_sd = extant_socket;
-	} else {
-		original_sd = add_socket(original_node); 
-		// should return existing socket if it exists, so this is a bit redundant
-	}
 
 	// send node
 	ChordMessage message;
@@ -692,12 +697,7 @@ void connect_send_find_successor_response(ChordMessage *message_in) {
 	message.has_query_id = true;
 	message.query_id = query_id;
 
-	send_message(original_sd, &message);
-
-	// If we created the socket specifically for this connection, then remove it
-	// if(!socket_already_exists) {
-	// 	delete_socket(original_node);
-	// }
+	return send_message(sd, &message);
 }
 
 /**
@@ -747,7 +747,7 @@ void send_check_predecessor_response_socket(int sd, uint32_t query_id) {
  * @author Gary
  * @param sd socket descriptor to send over
  */
-void send_get_successor_list_response(int sd, uint32_t query_id) {
+int send_get_successor_list_response(int sd, uint32_t query_id) {
 	ChordMessage message;
 	GetSuccessorListResponse resp;
 	chord_message__init(&message);
@@ -760,7 +760,7 @@ void send_get_successor_list_response(int sd, uint32_t query_id) {
 	message.has_query_id = true;
 	message.query_id = query_id;
 
-	send_message(sd, &message);
+	return send_message(sd, &message);
 }
 
 /**
@@ -794,76 +794,6 @@ int send_get_predecessor_response_socket(int sd, uint32_t query_id) {
 	message.query_id = query_id;
 
 	return send_message(sd, &message);
-}
-
-/**
- * Create and assign the callback into the array.
- * @author Adam
- * @author Gary
- * @return The location of the callback in the callback_array (query id)
- */
-int add_callback(CallbackFunction func, int arg) {
-	int query_id = rand();
-	struct Callback *cb_ptr = malloc(sizeof(struct Callback));
-	cb_ptr->func = func;
-	cb_ptr->arg = arg;
-	cb_ptr->query_id = query_id;
-	InsertDQ(callback_list, cb_ptr);
-	LOG("add callback %s(%d) -> query_id %d\n", callback_name[func], arg, query_id);
-	return query_id;
-}
-
-/**
- * @author Adam
- * @author Gary
- */
-int do_callback(ChordMessage *message) {
-	assert(message->has_query_id);
-	struct Callback *curr;
-	// find callback
-	for(curr = callback_list->next; curr != callback_list; curr = curr->next) {
-		if(curr->query_id == message->query_id) {
-			break;
-		}
-	}
-	Node *node = message->r_find_succ_resp->node;
-	char *callback_func_name = (curr->func < sizeof(callback_name) ? callback_name[curr->func] : "<error>");
-	LOG("do callback %s(%d)\n",callback_func_name,curr->arg);
-	switch(curr->func) {
-		case CALLBACK_PRINT_LOOKUP: ;
-			callback_print_lookup(node);
-			break;
-		case CALLBACK_JOIN: ;
-			// Set successors[callback.arg] to the given node
-			callback_join(node, curr->arg);	
-			break;
-		case CALLBACK_FIX_FINGERS: ;
-			callback_fix_fingers(node, curr->arg);
-			break;
-		case CALLBACK_STABILIZE_GET_PREDECESSOR: ;
-			// callback_get_predecessor();
-			break;
-		case CALLBACK_NONE: ;
-			break;
-		default: ;
-			exit_error("Callback provided with unknown function enum");
-	}
-	
-	// TODO: Remove from callback array
-	//callback_array[message->query_id];
-	return 0;
-}
-
-/**
- * Allocate a new memory copy of the given node.
- * @author Adam
- * @param nprime Node to copy over
- * @return Address of new node
- */
-Node *copy_node(Node *nprime) {
-	Node *new_node = malloc(sizeof(Node));
-	memcpy(new_node, nprime, sizeof(Node));
-	return new_node;
 }
 
 ///////////////////////////
@@ -951,7 +881,7 @@ int callback_print_lookup(Node *result) {
 
 
 /**
- * Return hash of given node.
+ * Return hash of given node using the global variable ctx.
  * @author Gary
  * @author Adam
  */
@@ -965,7 +895,10 @@ uint64_t get_node_hash(Node *n) {
 	return ret;
 }
 
-//TODO
+/**
+ * Get the hash for a given buffer using the global variable ctx.
+ * @author Adam
+ */
 uint64_t get_hash(char *buffer) {
 	uint8_t *hash = malloc(20);
 	sha1sum_reset(ctx);
@@ -975,7 +908,10 @@ uint64_t get_hash(char *buffer) {
 	return ret;
 }
 
-//TODO
+/**
+ * Print state.
+ * @author Adam
+ */
 int print_state() {
 	printf("< Self %s\n", display_node(&n));
 	//TODO should I start from zero or one?
@@ -1011,17 +947,6 @@ int check_time(struct timespec *last_time, int timeout) {
 	} else {
 		return 0;
 	}
-}
-
-/**
- * print out an error message and shut down the program
- * @author Gary
- * @param error_message print out an error message and shut down the program
- * @return void
- */
-void exit_error(char * error_message) {
-	perror(error_message);
-	exit(EXIT_FAILURE);
 }
 
 /**
@@ -1089,7 +1014,7 @@ int handle_connection(int sd) {
  * do with that data.
  */
 
-//TODO
+
 int join_node(Node *nprime) {
 	// Assumes the key is already set in the node. 
 	int nprime_sd = get_socket(nprime);
@@ -1104,7 +1029,6 @@ int create() {
 	return 0;
 }
 
-//TODO
 int join(struct sockaddr_in join_addr) {
 	LOG("join to {%s}\n",display_address(join_addr));
 	predecessor = NULL;
@@ -1122,8 +1046,10 @@ int join(struct sockaddr_in join_addr) {
 }
 
 
+/**
+ * Set successors[arg] to the given node.
+ */
 void callback_join(Node *node, int arg) {
-	//TODO Which successor?
 	// Make a new value if it doesn't yet exist
 	// and copy over the value
 	if(successors[arg] == NULL) {
@@ -1150,9 +1076,7 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 			send_get_predecessor_request(sd);
 		}
 		successors[0] = successor_predecessor;
- 	} 
-
-	send_notify_request(successors[0]);
+ 	}
 	return 1;
 }
 
@@ -1166,17 +1090,11 @@ int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors) {
 int send_notify_request(Node *nprime) {
 	ChordMessage message;
 	NotifyRequest request;
-	Node temp_n;
 	int successor_socket = get_socket(nprime);
 	chord_message__init(&message);
 	notify_request__init(&request);
-	node__init(&temp_n);
-
-	temp_n.address = n.address;
-	temp_n.key = n.key;
-	temp_n.port = n.port;
-
-	request.node = &temp_n;
+	
+	request.node = &n;
 	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_REQUEST;		
 	message.notify_request = &request;
 	message.has_query_id = true;
@@ -1253,6 +1171,10 @@ int check_predecessor() {
  * @param sp timeout for stabilizes
  */
 void check_periodic(int cpp, int ffp, int sp) {
+	UNUSED(cpp);
+	UNUSED(ffp);
+	UNUSED(sp);
+
 	// check timeout
 	if(check_time(&last_stabilize, sp) && !stabilize_ongoing) {
 		// stabilize_ongoing = 1;
@@ -1471,7 +1393,7 @@ int delete_socket_from_array(int sd) {
 void increment_failed() {
 	failed_successors += 1;
 	if(failed_successors > num_successors) {
-		exit_error("All consecutive nodes have failed");
+		exit_error("All successor nodes have failed");
 	}
 }
 
