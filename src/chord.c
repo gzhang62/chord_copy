@@ -328,7 +328,7 @@ void receive_successor_response(int sd, ChordMessage *message) {
 
 void receive_check_predecessor_response() {
 	// if we have received then predecessor is alive, zero out timestamp
-
+	printf("balls");
 }
 
 void receive_get_predecessor_response(int sd, ChordMessage *message) {
@@ -338,7 +338,7 @@ void receive_get_predecessor_response(int sd, ChordMessage *message) {
 	Node *successors_predecessor = message->get_predecessor_response->node;
 	// reset timestamp to indicate we have no pending get predecessor
 	stabilize_get_predecessor(successors_predecessor);
-	send_get_successor_list_request(sd);
+	// stabilize_ongoing = 0;
 }
 
 
@@ -681,9 +681,9 @@ void connect_send_find_successor_response(ChordMessage *message_in) {
 	send_message(original_sd, &message);
 
 	// If we created the socket specifically for this connection, then remove it
-	if(!socket_already_exists) {
-		delete_socket(original_node);
-	}
+	// if(!socket_already_exists) {
+	// 	delete_socket(original_node);
+	// }
 }
 
 /**
@@ -803,6 +803,9 @@ int do_callback(ChordMessage *message) {
 			break;
 		case CALLBACK_FIX_FINGERS: ;
 			callback_fix_fingers(node, curr->arg);
+			break;
+		case CALLBACK_STABILIZE_GET_PREDECESSOR: ;
+			// callback_get_predecessor();
 			break;
 		case CALLBACK_NONE: ;
 			break;
@@ -1081,7 +1084,11 @@ void callback_join(Node *node, int arg) {
 	if(successors[arg] == NULL) {
 		successors[arg] = malloc(sizeof(Node));
 	}
+
 	memcpy(successors[arg], node, sizeof(Node));
+	if(arg < num_successors) {
+		send_find_successor_request(node->key, CALLBACK_JOIN, arg+1);
+	}
 }
 
 /**
@@ -1121,6 +1128,7 @@ int send_notify_request(Node *nprime) {
 	message.has_query_id = true;
 	message.query_id = rand();
 
+	// done with stabilize
 	return send_message(successor_socket, &message);
 }
 
@@ -1135,7 +1143,7 @@ int fix_fingers() {
 	// TODO Bobby said that we said that usually we pick only
 	// one at a time (randomly) to pick
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
-		send_find_successor_request(n.key + (2 << (i-1)), CALLBACK_FIX_FINGERS, i); 
+		send_find_successor_request(n.key + (((uint64_t)2) << (i-1)), CALLBACK_FIX_FINGERS, i); 
 	}
 	return 1;
 }
@@ -1194,13 +1202,13 @@ void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
 	if(check_time(&last_stabilize, sp) && !stabilize_ongoing) {
 		// stabilize_ongoing = 1;
-		// int sd = get_socket(successors[0]); // TODO: may need to wait for timeouts here
-		// while(send_get_predecessor_request(sd) == -1) { // initiate stabilize with get predecesso
-		// 	// send failed retry with new sd
-		// 	increment_failed();
-		// 	sd = get_socket(successors[failed_successors]);
-		// }
-		// clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
+		int sd = get_socket(successors[0]); // TODO: may need to wait for timeouts here
+		while(send_get_predecessor_request(sd) == -1) { // initiate stabilize with get predecesso
+			// send failed retry with new sd
+			increment_failed();
+			sd = get_socket(successors[failed_successors]);
+		}
+		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
 	}
 
 	// // successor failed/timed out for get predecessor
