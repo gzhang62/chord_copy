@@ -1273,7 +1273,7 @@ int check_predecessor() {
  */
 void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
-	if(check_time(&last_stabilize, sp) && !stabilize_ongoing) {
+	if(check_time(&last_stabilize, sp)) {
 		// stabilize_ongoing = 1;
 		int sd = get_socket(successors[0]); // TODO: may need to wait for timeouts here
 		while(send_get_predecessor_request(sd) == -1) { // initiate stabilize with get predecesso
@@ -1542,9 +1542,15 @@ if(message == NULL) { return -1; }
 void find_delete_node_socket(int sd) {
 	Node *nprime = find_node(sd);
 
-	if(nprime->key == predecessor->key) {
-		free(predecessor);
-		predecessor = NULL;
+	if(nprime == NULL) {
+		return;
+	}
+
+	if(predecessor != NULL) {
+		if(nprime->key == predecessor->key) {
+			free(predecessor);
+			predecessor = NULL;
+		}
 	}
 	// delete nprime from finger table
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
