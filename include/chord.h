@@ -47,11 +47,14 @@ Node *finger[NUM_BYTES_IDENTIFIER];
 struct timespec last_check_predecessor;
 struct timespec last_fix_fingers;
 struct timespec last_stabilize;
-
-struct timespec wait_check_predecessor= {0, 0}; // 0 when there is no check predecessor request going on
+int stabilize_ongoing = 0;
+int check_predecessor_ongoing = 0;
+int fix_fingers_ongoing = 0;
 
 struct sha1sum_ctx *ctx;
 struct Callback *callback_list;
+
+int failed_successors = 0; // keep track of number of failed successors
 
 // Num successors
 uint8_t num_successors;
@@ -60,7 +63,9 @@ typedef enum {
     CALLBACK_NONE = 0,
     CALLBACK_PRINT_LOOKUP = 1,
     CALLBACK_JOIN = 2,
-    CALLBACK_FIX_FINGERS = 3
+    CALLBACK_FIX_FINGERS = 3,
+    CALLBACK_STABILIZE_GET_PREDECESSOR = 4,
+    CALLBACK_STABILIZE_GET_SUCCESSOR_LIST = 5
 } CallbackFunction;
 
 /**
@@ -82,23 +87,30 @@ typedef struct Callback {
 char *display_address(struct sockaddr_in address);
 void node_to_address(Node *node, struct sockaddr_in *out_sockaddr);
 char *display_node(Node *node);
+int min(int a, int b);
 
 uint64_t get_node_hash(Node *nprime);
 uint64_t get_hash(char *buffer);
 
 void receive_successor_request(int sd, ChordMessage *message);
 void receive_successor_response(int sd, ChordMessage *message);
+void receive_check_predecessor_response();
+void receive_get_successor_list_response(int sd, ChordMessage *message);
+void receive_notify_response();
+void receive_get_predecessor_response(int sd, ChordMessage *message);
+
 
 Node *closest_preceding_node(uint64_t id);
 Node **get_successor_list(); //TODO unsure if this is the best output format
 
 // init callback linked list, node n
-void init_global(struct chord_arguments chord_args, int serverfd);
+void init_global(struct chord_arguments chord_args);
 int create();
 int join(struct sockaddr_in join_addr);
 void callback_join(Node *node, int arg);
 
-int stabilize();
+int stabilize_get_predecessor();
+int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors);
 
 int notify(Node *nprime);
 
@@ -118,10 +130,12 @@ ChordMessage *receive_message(int sd);
 void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg);
 
 void connect_send_find_successor_response(Node *original_node, uint32_t query_id);
-void send_get_successor_list_response(int sd);
-void send_successor_list_request();
-void send_notify_response_socket(int sd, uint32_t query_id);
-void send_get_precedessor_response_socket(int sd, uint32_t query_id);
+void send_get_successor_list_response(int sd, uint32_t query_id);
+int send_get_successor_list_request();
+int send_notify_response_socket(int sd, uint32_t query_id);
+int send_get_predecessor_response_socket(int sd, uint32_t query_id);
+void send_check_predecessor_response_socket(int sd, uint32_t query_id);
+int send_notify_request(Node *nprime);
 
 
 ChordMessage *smessage(int sd);
@@ -143,6 +157,9 @@ int check_time(struct timespec *last_time, int timeout);
 void exit_error(char * error_message);
 // check periodic timers
 void check_periodic();
+// increment failed successors and check if all consecutive nodes have failed
+void increment_failed();
+// int successor_timeout(struct timespec timer, int timeout)
 
 // Stateful functions
 int add_callback(CallbackFunction func, int arg); 

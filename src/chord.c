@@ -18,7 +18,7 @@
 
 #define VERBOSE true
 
-void LOG(const char *template, ...){
+void LOG(const char *template, ...) {
   if (VERBOSE) { 
 	va_list ap;
 	va_start(ap, template);
@@ -45,6 +45,11 @@ char *display_address(struct sockaddr_in address) {
 	memset(address_string_buffer,0,sizeof(address_string_buffer));
 	sprintf(address_string_buffer, "%s %d", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
 	return address_string_buffer;
+}
+
+/* Min function */
+int min(int a, int b) {
+	return (a > b) ? b : a;
 }
 
 /**
@@ -100,7 +105,7 @@ int main(int argc, char *argv[]) {
 
 	server_fd = setup_server(my_address.sin_port);
 
-	init_global(chord_args, server_fd);
+	init_global(chord_args);
 	//printf("%d:%d\n",chord_args.join_address.sin_addr.s_addr,chord_args.join_address.sin_port);
 	// node is being created
 	if(join_address.sin_port == 0) {
@@ -165,7 +170,7 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-void init_global(struct chord_arguments chord_args, int serverfd) {
+void init_global(struct chord_arguments chord_args) {
 	int cpret = clock_gettime(CLOCK_REALTIME, &last_check_predecessor);
 	int ffret = clock_gettime(CLOCK_REALTIME, &last_fix_fingers);
 	int spret = clock_gettime(CLOCK_REALTIME, &last_stabilize);
@@ -175,10 +180,7 @@ void init_global(struct chord_arguments chord_args, int serverfd) {
 	// set num_successors
 	num_successors = chord_args.num_successors;
 	// set n address
-	struct sockaddr_in server_addr;
-	getsockname(serverfd, (struct sockddr *) &server_addr, sizeof(server_addr));
-
-	n.address = inet_addr("127.0.0.1"); // TODO: Change this
+	n.address = chord_args.my_address.sin_addr.s_addr;
 	n.port = chord_args.my_address.sin_port;
 	ctx = sha1sum_create(NULL, 0);
 	n.key = get_node_hash(&n);
@@ -207,19 +209,27 @@ int read_process_node(int sd)	{
 			receive_successor_request(sd, message);
 			break;
 		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST: ;
-			send_get_precedessor_response_socket(sd, message->query_id);
+			send_get_predecessor_response_socket(sd, message->query_id);
 			break;
 		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST: ;
-			send_get_precedessor_response_socket(sd, message->query_id);
+			send_check_predecessor_response_socket(sd, message->query_id);
 			break;
 		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST: ;
-			send_get_successor_list_response(sd);
+			send_get_successor_list_response(sd, message->query_id);
 			break;
 		// Deal with responses
-		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: ;
-			//receive_successor_response(sd, message);
-		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: ;
-		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE: ;
+		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: 
+			receive_successor_response(sd, message);
+			break;
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: 
+			receive_check_predecessor_response();
+			break;
+		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE: 
+			receive_get_successor_list_response(sd, message);
+			break;
+		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE:
+			receive_get_predecessor_response(sd, message);
+			break;
 		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE: ;
 			//assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP);
 			//TODO we're not actually using the type of message in the responses, whoopss
@@ -281,6 +291,33 @@ void receive_successor_response(int sd, ChordMessage *message) {
 	do_callback(message);
 }
 
+void receive_check_predecessor_response() {
+	// if we have received then predecessor is alive, zero out timestamp
+
+}
+
+void receive_get_predecessor_response(int sd, ChordMessage *message) {
+	assert(message->msg_case == CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE);
+	assert(message->has_query_id);
+
+	Node *successors_predecessor = message->get_predecessor_response->node;
+	// reset timestamp to indicate we have no pending get predecessor
+	stabilize_get_predecessor(successors_predecessor);
+	send_get_successor_list_request(sd);
+}
+
+
+void receive_get_successor_list_response(int sd, ChordMessage *message) {
+	UNUSED(sd);
+	assert(message->msg_case == CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE);
+
+	int successors_list_size = message->get_successor_list_response->n_successors;
+	Node **successors_list = message->get_successor_list_response->successors;
+
+	// replace current successor list with response
+	stabilize_get_successor_list(successors_list, successors_list_size);
+}
+
 /**
  * Find the closest preceding node.
  * @author Adam
@@ -293,12 +330,6 @@ Node *closest_preceding_node(uint64_t id) {
 		}
 	}
 	return &n;
-}
-
-Node **get_successor_list() {
-	//TODO
-	send_successor_list_request();
-	return NULL;
 }
 
 ///////////////
@@ -409,6 +440,36 @@ void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
+int send_get_predecessor_request(int sd) {
+	int query_id = add_callback(CALLBACK_STABILIZE_GET_PREDECESSOR, 0);
+	ChordMessage message;
+	GetPredecessorRequest req;
+	chord_message__init(&message);
+	get_predecessor_request__init(&req);
+
+	message.has_query_id = true;
+	message.query_id = query_id;
+	message.msg_case = CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST;
+	message.get_predecessor_request = &req;
+
+	return send_message(sd, &message);
+}
+
+int send_get_successor_list_request(int sd) {
+	int query_id = add_callback(CALLBACK_STABILIZE_GET_SUCCESSOR_LIST, 0);
+	ChordMessage message;
+	GetSuccessorListRequest req;
+	chord_message__init(&message);
+	get_successor_list_request__init(&req);
+
+	message.has_query_id = true;
+	message.query_id = query_id;
+	message.msg_case = CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST;
+	message.get_successor_list_request = &req;
+
+	return send_message(sd, &message);
+}
+
 /**
  * Construct and send the *initial* ChordMessage FindSuccessorRequest.
  * The result will be caught in receive_find_successor_request.
@@ -482,7 +543,7 @@ void connect_send_find_successor_response(Node *original_node, uint32_t query_id
  * Send an (empty) response to the socket from which we got the
  * notify (with the given query id).
  */
-void send_notify_response_socket(int sd, uint32_t query_id) {
+int send_notify_response_socket(int sd, uint32_t query_id) {
 	ChordMessage message;
 	NotifyResponse response;
 	chord_message__init(&message);
@@ -490,6 +551,20 @@ void send_notify_response_socket(int sd, uint32_t query_id) {
 
 	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_RESPONSE;
 	message.notify_response = &response;
+	message.has_query_id = true;
+	message.query_id = query_id;
+
+	return send_message(sd, &message);
+}
+
+void send_check_predecessor_response_socket(int sd, uint32_t query_id) {
+	ChordMessage message;
+	CheckPredecessorResponse response;
+	chord_message__init(&message);
+	check_predecessor_response__init(&response);
+
+	message.msg_case = CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE;
+	message.check_predecessor_response = &response;
 	message.has_query_id = true;
 	message.query_id = query_id;
 
@@ -501,7 +576,7 @@ void send_notify_response_socket(int sd, uint32_t query_id) {
  * @author Gary
  * @param sd socket descriptor to send over
  */
-void send_get_successor_list_response(int sd) {
+void send_get_successor_list_response(int sd, uint32_t query_id) {
 	ChordMessage message;
 	GetSuccessorListResponse resp;
 	chord_message__init(&message);
@@ -511,27 +586,8 @@ void send_get_successor_list_response(int sd) {
 	resp.successors = (Node **)successors; // TODO: may not be correct
 	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE;
 	message.get_successor_list_response = &resp;
-	message.has_query_id = false;
-
-	send_message(sd, &message);
-}
-
-/**
- * Ask successor/successors for their successor list
- * @author Gary
- */
-void send_successor_list_request() {
-	// TODO: adapt to successor list
-	int sd = get_socket(successors[0]);
-	// 
-	ChordMessage message;
-	GetSuccessorListRequest req;
-	chord_message__init(&message);
-	get_successor_list_request__init(&req);
-
-	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST;
-	message.get_successor_list_request = &req;
-	message.has_query_id = false;
+	message.has_query_id = true;
+	message.query_id = query_id;
 
 	send_message(sd, &message);
 }
@@ -541,7 +597,7 @@ void send_successor_list_request() {
  * (with the given query query_id). 
  * @author Adam
  */
-void send_get_precedessor_response_socket(int sd, uint32_t query_id) {
+int send_get_predecessor_response_socket(int sd, uint32_t query_id) {
 	ChordMessage message;
 	GetPredecessorResponse response;
 	chord_message__init(&message);
@@ -554,7 +610,7 @@ void send_get_precedessor_response_socket(int sd, uint32_t query_id) {
 	message.has_query_id = true;
 	message.query_id = query_id;
 
-	send_message(sd, &message);
+	return send_message(sd, &message);
 }
 
 /**
@@ -791,7 +847,7 @@ int setup_server(int server_port) {
 	// zero out addr struct
 	memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); // TODO: change this
+	server_addr.sin_addr.s_addr = htonl(INADDR_ANY); // TODO: change this
 	server_addr.sin_port = (unsigned short) server_port;		
 
 	// bind socket to address
@@ -873,36 +929,43 @@ void callback_join(Node *node, int arg) {
 }
 
 /**
- * stabilize as written in chord article
+ * stabilize after receiving a get predecessor response
  * @author Gary
  * @return 1, could be made void
  */
-int stabilize() {
-	Node *immediate_successor = successors[0];
-	Node *x = closest_preceding_node(immediate_successor->key);
-	if(x->key > n.key && x->key < immediate_successor->key) {
-		Node **successor_list = get_successor_list();
-		for(int i = 1; i < num_successors - 1; i++) {
-			successors[i] = successor_list[i-1];
+int stabilize_get_predecessor(Node *successor_predecessor) {
+	if(successor_predecessor->key > n.key && successor_predecessor->key < successors[0]->key) {
+		int sd = add_socket(successor_predecessor);
+		if(send_get_successor_list_request(sd) == -1) {		// this request failed
+			increment_failed();
+			sd = get_socket(successors[failed_successors]); // send the next socket that didn't fail
+			send_get_predecessor_request(sd);
 		}
-		successors[0] = x;
+		successors[0] = successor_predecessor;
  	}
-	notify(immediate_successor);
 	return 1;
 }
 
-//TODO
-int notify(Node *nprime) {
+int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors) {
+	// fix successor list
+	memcpy(successors + 1, successors_list, sizeof(successors[0]) * min(n_successors, num_successors));
+	// send notify
+	return send_notify_request(&n);
+}
+
+int send_notify_request(Node *nprime) {
 	ChordMessage message;
 	NotifyRequest request;
 	int successor_socket = get_socket(nprime);
 	chord_message__init(&message);
 	notify_request__init(&request);
-	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_REQUEST;		
 	request.node = &n;
+	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_REQUEST;		
 	message.notify_request = &request;
-	send_message(successor_socket, &message);
-	return 0;
+	message.has_query_id = true;
+	message.query_id = rand();
+
+	return send_message(successor_socket, &message);
 }
 
 /**
@@ -947,6 +1010,7 @@ int check_predecessor() {
 		// construct and send a chec_predecessor message to predecessor
 		int sd = get_socket(predecessor);
 		assert(sd != -1);
+		int query_id = rand();
 
 		// construct chord message check predecessor
 		CheckPredecessorRequest request;
@@ -954,11 +1018,10 @@ int check_predecessor() {
 		check_predecessor_request__init(&request);
 		message.msg_case = CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST;		
 		message.check_predecessor_request = &request;
+		message.has_query_id = true;
+		message.query_id = query_id;
 
 		send_message(sd, &message);
-		// start timer
-		clock_gettime(CLOCK_REALTIME, &wait_check_predecessor);
-
 		return 0;
 	}
 }
@@ -972,34 +1035,52 @@ int check_predecessor() {
  */
 void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
-	if(check_time(&last_stabilize, sp)) {
-		stabilize();
-		// printf("Stabilize\n");
-		// fflush(stdout);
-		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function above
+	if(check_time(&last_stabilize, sp) && !stabilize_ongoing) {
+		stabilize_ongoing = 1;
+		int sd = get_socket(successors[0]); // TODO: may need to wait for timeouts here
+		while(send_get_predecessor_request(sd) == -1) { // initiate stabilize with get predecesso
+			// send failed retry with new sd
+			increment_failed();
+			sd = get_socket(successors[failed_successors]);
+		}
+		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
 	}
 
-	if(wait_check_predecessor.tv_sec == 0) {
-		// we have no ongoing check predecessor
-		if(check_time(&last_check_predecessor, cpp)) {
-			check_predecessor();
-			// printf("Check Predecessor\n");
-			// fflush(stdout);
-			clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
-		}
-	} else {
-		if(check_time(&wait_check_predecessor, 3 * cpp)) {
-			delete_socket(predecessor);
-			predecessor = NULL;
-		}
+	// // successor failed/timed out for get predecessor
+	// if(successor_timeout(wait_get_predecessor, sp)) {
+	// 	int sd = get_socket(successors[failed_successors]);
+	// 	send_get_predecessor_request(sd);
+	// 	clock__gettime(CLOCK_REALTIME, &wait_get_predecessor);
+	// }
+
+	// // successor failed/timed out for get successor list
+	// if(successor_timeout(wait_get_successor_list, sp)) {
+	// 	int sd = get_socket(successors[failed_successors]);
+	// 	send_get_predecessor_request(sd);
+	// 	clock__gettime(CLOCK_REALTIME, &wait_get_successor_list);
+	// }
+	
+
+	if(check_time(&last_check_predecessor, cpp) && !check_predecessor_ongoing) {
+		check_predecessor_ongoing = 1;
+		check_predecessor();
+		clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
 	}
 
-	if(check_time(&last_fix_fingers, ffp)) {
+	if(check_time(&last_fix_fingers, ffp) && !fix_fingers_ongoing) {
+		fix_fingers_ongoing = 1;
 		fix_fingers();
-		// printf("Fix fingers\n");
-		// fflush(stdout);
 		clock_gettime(CLOCK_REALTIME, &last_fix_fingers); // should go into function above
 	}
+}
+
+// return 1 if successor has timed out, 0 otherwise
+int successor_timeout(struct timespec timer, int timeout) {
+	if(timer.tv_nsec != 0 && timer.tv_sec != 0 && check_time(&timer, timeout * 3)) {
+		increment_failed();
+		return 1;
+	}
+	return 0;
 }
 
 /**
@@ -1128,6 +1209,13 @@ int delete_socket_from_array(int sd) {
 		}
 	}
 	return -1;
+}
+
+void increment_failed() {
+	failed_successors += 1;
+	if(failed_successors > num_successors) {
+		exit_error("All consecutive nodes have failed");
+	}
 }
 
 
