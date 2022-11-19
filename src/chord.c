@@ -276,20 +276,37 @@ void receive_successor_request(int sd, ChordMessage *message) {
 	uint32_t query_id = message->query_id;
 	Node *original_node = message->r_find_succ_req->requester;
 
-	if(n.key < id && id <= successors[0]->key) {
+	if(in_mod_range(id, n.key+1, successors[0]->key)) {
 		// if sd == -1, then we don't need to send anything
 		// because we're already at the endpoint
 		if(sd == -1) {
+			LOG("callback_print_lookup\n");
 			callback_print_lookup(&n);
 		} else {	
 			// Construct and send FindSuccessorResponse
-			connect_send_find_successor_response(original_node, query_id);
+			LOG("connect_send_find_successor_response(%d,%" PRIu32 ")\n",original_node->key,query_id);
+			connect_send_find_successor_response(message);
 			// It doesn't really matter if the node fails here
 		}
 	} else {
 		// Pass along the message to the node closest to the destination
 		// Keep on trying to send until we find a node to which we can send 
+		LOG("send_to_closest_preceding_node\n");
 		send_to_closest_preceding_node(message);
+	}
+}
+
+/** Check whether the value is between a and b mod 2^64.
+ * TODO doesn't work with different sized keys.
+ */
+bool in_mod_range(uint64_t key, uint64_t a, uint64_t b) {
+    uint64_t max_id = (uint64_t) -1;
+    printf("%lu",max_id);
+	if(a < b) {
+		return (a <= key && key <= b);
+	} else { // b < a
+		//return (a <= key && key <= max_id) || (0 <= key && key <= b);
+		return (a <= key && key <= max_id) || (key <= b);
 	}
 }
 
@@ -345,7 +362,6 @@ void receive_get_successor_list_response(int sd, ChordMessage *message) {
  * @author Gary 
  */
 Node *send_to_closest_preceding_node(ChordMessage *message) {
-	LOG("send_to_closest_preceding_node\n");
 	assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ);
 	uint64_t id = message->r_find_succ_req->key;
 
@@ -357,7 +373,8 @@ Node *send_to_closest_preceding_node(ChordMessage *message) {
 	   proceeds, after a timeout, by trying the next best predecessor
 	   among the nodes in the finger table and the successor list." "*/
 	for(int i = NUM_BYTES_IDENTIFIER-1; i >= 0; i--) {
-		if(finger[i] != NULL && (n.key < finger[i]->key && finger[i]->key < id)) {
+		LOG("finger[%d]->key = %" PRIu64 "\n",i,(finger[i] ? finger[i]->key : 0));
+		if(finger[i] != NULL && in_mod_range(finger[i]->key, n.key+1, id-1)) {
 			Node *result = send_to_entry(finger, i, message);
 			if(result != NULL) {
 				return result;
@@ -367,12 +384,14 @@ Node *send_to_closest_preceding_node(ChordMessage *message) {
 	// We couldn't send it to any of the nodes in the finger table; try the successors next
 	// TODO obviously redundant code
 	for(int i = 0; i < num_successors; i++) {
+		LOG("successors[%d]->key = %" PRIu64 "\n",i,(successors[i] ? successors[i]->key : 0));
 		// Try to send the message to the node in the successor array
 		Node *result = send_to_entry(successors, i, message);
 		if(result != NULL) {
 			return result;
 		}
 	}
+	// At this point, we don't know any 
 	return NULL;
 }
 
@@ -454,7 +473,7 @@ int send_message(int sd, ChordMessage *message) {
 		do_callback(&resp_mess);
 		
 	} else if(sd == -2) {
-
+		//TODO
 	} else {
 		// Pack and send message
 		int64_t len = chord_message__get_packed_size(message);
@@ -606,7 +625,14 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
  * @author Gary
  * @param original_node the node which first made the recursive FindSuccessor request 
  */
-void connect_send_find_successor_response(Node *original_node, uint32_t query_id) {
+void connect_send_find_successor_response(ChordMessage *message_in) {
+	assert(message_in->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ);
+	assert(message_in->has_query_id);
+	Node *original_node = message_in->r_find_succ_req->requester;
+	uint64_t id = message_in->r_find_succ_req->key;
+	uint32_t query_id = message_in->query_id;
+
+
 	// create new temp socket, or use the previous socket if it exists
 	int extant_socket = get_socket(original_node), original_sd;
 	bool socket_already_exists = (extant_socket != -1);
@@ -619,12 +645,19 @@ void connect_send_find_successor_response(Node *original_node, uint32_t query_id
 
 	// send node
 	ChordMessage message;
-	RFindSuccResp response; 
+	RFindSuccResp response;
+	Node node; 
 	// Not using the macros because they cause some warnings
 	chord_message__init(&message);
 	r_find_succ_resp__init(&response);
+	node__init(&node);
 
-	response.node = &n;
+	node.address = n.address;
+	node.key = n.key;
+	node.port = n.port;
+
+	response.node = &node;
+	response.key = id;
 
 	// TODO do we need to free these? 
 	message.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;		
@@ -1012,8 +1045,9 @@ int join(struct sockaddr_in join_addr) {
 	temp_succ->address = join_addr.sin_addr.s_addr;
 	temp_succ->port = join_addr.sin_port;
 	temp_succ->key = get_node_hash(temp_succ);
-	successors[0] = temp_succ;
+	//successors[0] = temp_succ;
 	int new_sd = add_socket(temp_succ);
+	free(temp_succ);
 	send_find_successor_request_socket(new_sd, n.key + 1, CALLBACK_JOIN, 0);
 	// TODO: modify to find successor list vs first successor
 	return -1;
@@ -1295,7 +1329,7 @@ int get_socket(Node *node) {
 			len = sizeof(sd_address);
 			// Use getsockname to find the address, compare to node_address
 			getsockname(clients[i], (struct sockaddr *) &sd_address, &len);
-			printf("clients[%d] = %d: %s", i, clients[i], inet_ntoa(sd_address.sin_addr));
+			//printf("clients[%d] = %d: %s", i, clients[i], inet_ntoa(sd_address.sin_addr));
 			if((sd_address.sin_addr.s_addr == node_address.sin_addr.s_addr) &&
 			(sd_address.sin_port == node_address.sin_port)) {
 				return clients[i];

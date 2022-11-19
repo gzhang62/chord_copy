@@ -132,8 +132,8 @@ ChordMessage *receive_message(int sd);
 // message functions
 void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg);
 
+void connect_send_find_successor_response(ChordMessage *message_in);
 
-void connect_send_find_successor_response(Node *original_node, uint32_t query_id);
 void send_get_successor_list_response(int sd, uint32_t query_id);
 int send_get_successor_list_request();
 int send_notify_response_socket(int sd, uint32_t query_id);
@@ -175,3 +175,5 @@ int delete_socket(Node *nprime);
 
 int add_socket_to_array(int sd);
 int delete_socket_from_array(int sd);
+
+bool in_mod_range(uint64_t key, uint64_t a, uint64_t b);
