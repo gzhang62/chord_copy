@@ -17,7 +17,7 @@
 #include "hash.h"
 #include "queue.h"
 
-#define VERBOSE true
+#define VERBOSE false
 
 void LOG(const char *template, ...) {
   if (VERBOSE) { 
@@ -306,7 +306,8 @@ void receive_successor_request(int sd, ChordMessage *message) {
 		// because we're already at the endpoint
 		if(sd == -1) {
 			LOG("callback_print_lookup\n");
-			callback_print_lookup(&n);
+			// TODO get first non-failed successor
+			callback_print_lookup(successors[0]);
 		} else {	
 			// Construct and send FindSuccessorResponse
 			//LOG("connect_send_find_successor_response(%d,%" PRIu32 ")\n",original_node->key,query_id);
@@ -637,7 +638,7 @@ void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction fu
 }
 
 /**
- * Connect to the address in request_node and send the response (i.e. the current node)
+ * Connect to the address in request_node and send the response (i.e. the node's successor)
  * to request_node, with the given query_id.
  * @author Adam
  * @author Gary
@@ -670,9 +671,10 @@ void connect_send_find_successor_response(ChordMessage *message_in) {
 	r_find_succ_resp__init(&response);
 	node__init(&node);
 
-	node.address = n.address;
-	node.key = n.key;
-	node.port = n.port;
+	// TODO use first non-failed successor  
+	node.address = successors[0]->address;
+	node.key = successors[0]->key;
+	node.port = successors[0]->port;
 
 	response.node = &node;
 	response.key = id;
