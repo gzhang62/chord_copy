@@ -33,7 +33,7 @@ int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds
 
 char address_string_buffer[40]; // for displaying addresses
 char node_string_buffer[80]; 	// for displaying nodes
-static char *callback_name[] = {"NONE", "PRINT_LOOKUP", "JOIN", "FIX_FINGERS"};
+static char *callback_name[] = {"NONE", "PRINT_LOOKUP", "JOIN", "FIX_FINGERS", "CALLBACK_STABILIZE_GET_PREDECESSOR", "CALLBACK_STABILIZE_GET_SUCCESSOR_LIST"};
 
 // TODO constant saying how long TCP connection waits before giving up
 const int user_timeout = 5000;
@@ -1008,11 +1008,12 @@ int create() {
 int join(struct sockaddr_in join_addr) {
 	LOG("join to {%s}\n",display_address(join_addr));
 	predecessor = NULL;
-	Node temp_succ;
-	temp_succ.address = join_addr.sin_addr.s_addr;
-	temp_succ.port = join_addr.sin_port;
-	successors[0] = &temp_succ;
-	int new_sd = add_socket(&temp_succ);
+	Node *temp_succ = (Node *) malloc(sizeof(Node));
+	temp_succ->address = join_addr.sin_addr.s_addr;
+	temp_succ->port = join_addr.sin_port;
+	temp_succ->key = get_node_hash(temp_succ);
+	successors[0] = temp_succ;
+	int new_sd = add_socket(temp_succ);
 	send_find_successor_request_socket(new_sd, n.key + 1, CALLBACK_JOIN, 0);
 	// TODO: modify to find successor list vs first successor
 	return -1;
@@ -1138,14 +1139,14 @@ int check_predecessor() {
 void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
 	if(check_time(&last_stabilize, sp) && !stabilize_ongoing) {
-		stabilize_ongoing = 1;
-		int sd = get_socket(successors[0]); // TODO: may need to wait for timeouts here
-		while(send_get_predecessor_request(sd) == -1) { // initiate stabilize with get predecesso
-			// send failed retry with new sd
-			increment_failed();
-			sd = get_socket(successors[failed_successors]);
-		}
-		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
+		// stabilize_ongoing = 1;
+		// int sd = get_socket(successors[0]); // TODO: may need to wait for timeouts here
+		// while(send_get_predecessor_request(sd) == -1) { // initiate stabilize with get predecesso
+		// 	// send failed retry with new sd
+		// 	increment_failed();
+		// 	sd = get_socket(successors[failed_successors]);
+		// }
+		// clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
 	}
 
 	// // successor failed/timed out for get predecessor
@@ -1163,17 +1164,17 @@ void check_periodic(int cpp, int ffp, int sp) {
 	// }
 	
 
-	if(check_time(&last_check_predecessor, cpp) && !check_predecessor_ongoing) {
-		check_predecessor_ongoing = 1;
-		check_predecessor();
-		clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
-	}
+	// if(check_time(&last_check_predecessor, cpp) && !check_predecessor_ongoing) {
+	// 	check_predecessor_ongoing = 1;
+	// 	check_predecessor();
+	// 	clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
+	// }
 
-	if(check_time(&last_fix_fingers, ffp) && !fix_fingers_ongoing) {
-		fix_fingers_ongoing = 1;
-		fix_fingers();
-		clock_gettime(CLOCK_REALTIME, &last_fix_fingers); // should go into function above
-	}
+	// if(check_time(&last_fix_fingers, ffp) && !fix_fingers_ongoing) {
+	// 	fix_fingers_ongoing = 1;
+	// 	fix_fingers();
+	// 	clock_gettime(CLOCK_REALTIME, &last_fix_fingers); // should go into function above
+	// }
 }
 
 // return 1 if successor has timed out, 0 otherwise
