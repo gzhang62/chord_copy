@@ -357,7 +357,8 @@ void receive_get_predecessor_response(int sd, ChordMessage *message) {
 	assert(message->msg_case == CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE);
 	assert(message->has_query_id);
 
-	Node *successors_predecessor = message->get_predecessor_response->node;
+	Node *successors_predecessor = malloc(sizeof(Node));
+	memcpy(successors_predecessor, message->get_predecessor_response->node, sizeof(Node));
 	// reset timestamp to indicate we have no pending get predecessor
 	stabilize_get_predecessor(successors_predecessor);
 	// stabilize_ongoing = 0;
@@ -1130,6 +1131,7 @@ int create() {
 	LOG("creating node...\n");
 	predecessor = NULL;
 	successors[0] = &n;
+	LOG("Successor[0] @Create: %s\n", display_node(successors[0]));
 	return 0;
 }
 
@@ -1146,6 +1148,7 @@ int join(struct sockaddr_in join_addr) {
 	int new_sd = add_socket(temp_succ);
 	free(temp_succ);
 	send_find_successor_request_socket(new_sd, n.key + 1, CALLBACK_JOIN, 0);
+	LOG("Successor[0] @Join: %s\n", display_node(successors[0]));
 	// TODO: modify to find successor list vs first successor
 	return -1;
 }
@@ -1175,11 +1178,12 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 	if(successor_predecessor->port != 0	// predecessor is not null
 		&& in_mod_range(successor_predecessor->key, n.key, successors[0]->key)) {
 		int sd = add_socket(successor_predecessor);
-		if(send_get_successor_list_request(sd) == -1) {		// this request failed
-			increment_failed();
-			sd = get_socket(successors[failed_successors]); // send the next socket that didn't fail
-			send_get_predecessor_request(sd);
-		}
+		// if(send_get_successor_list_request(sd) == -1) {		// this request failed
+		// 	increment_failed();
+		// 	sd = get_socket(successors[failed_successors]); // send the next socket that didn't fail
+		// 	send_get_predecessor_request(sd);
+		// }
+
 		successors[0] = successor_predecessor;
  	} 
 

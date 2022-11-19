@@ -19,7 +19,7 @@
                     "--cpp",
                     "60",
                     "-r",
-                    "4"
+                    "1"
                 ],
                 "stopAtEntry": false,
                 "cwd": "${workspaceFolder}",
@@ -66,13 +66,13 @@
                     "-p",
                     "4170",
                     "--sp",
-                    "5",
+                    "7",
                     "--ffp",
                     "60",
                     "--cpp",
                     "60",
                     "-r",
-                    "4"
+                    "1"
                 ],
                 "stopAtEntry": false,
                 "cwd": "${workspaceFolder}",
@@ -108,7 +108,7 @@
                     "--cpp",
                     "60",
                     "-r",
-                    "4"
+                    "1"
                 ],
                 "stopAtEntry": false,
                 "cwd": "${workspaceFolder}",
