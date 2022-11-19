@@ -710,11 +710,15 @@ void send_check_predecessor_response_socket(int sd, uint32_t query_id) {
 void send_get_successor_list_response(int sd, uint32_t query_id) {
 	ChordMessage message;
 	GetSuccessorListResponse resp;
+	Node **temp_succ_list;
 	chord_message__init(&message);
 	get_successor_list_response__init(&resp);
 
 	resp.n_successors = num_successors;
-	resp.successors = (Node **)successors; // TODO: may not be correct
+	temp_succ_list = (Node **) malloc(sizeof(Node) * num_successors);
+	memcpy(temp_succ_list, successors, sizeof(Node) * num_successors);
+
+	resp.successors = temp_succ_list; // TODO: may not be correct
 	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE;
 	message.get_successor_list_response = &resp;
 	message.has_query_id = true;
