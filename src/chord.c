@@ -219,8 +219,48 @@ int read_process_node(int sd)	{
 
 	LOG("Receive message from %d:\n",sd);
 	ChordMessage *message = receive_message(sd);
-	return_value = handle_message(sd, message);
-	chord_message__free_unpacked(message, NULL);
+	if(message == NULL) { return -1; }
+	// Decide what to do based on message case
+	switch(message->msg_case) {
+		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
+			send_notify_response_socket(sd, message);
+			break;
+		case CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ: ;
+			receive_successor_request(sd, message);
+			break;
+		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST: ;
+			send_get_predecessor_response_socket(sd, message->query_id);
+			break;
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST: ;
+			send_check_predecessor_response_socket(sd, message->query_id);
+			break;
+		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST: ;
+			send_get_successor_list_response(sd, message->query_id);
+			break;
+		// Deal with responses
+		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: 
+			receive_successor_response(sd, message);
+			break;
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: 
+			receive_check_predecessor_response();
+			break;
+		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE: 
+			receive_get_successor_list_response(sd, message);
+			break;
+		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE:
+			receive_get_predecessor_response(sd, message);
+			break;
+		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE: ;
+			//assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP);
+			//TODO we're not actually using the type of message in the responses, whoopss
+			assert(message->has_query_id);	
+			receive_notify_response(sd, message);
+			break;
+		default:
+			exit_error("The given message didn't have a valid request set\n");
+	}
+
+	chord_message__free_unpacked(message,NULL);
 	return return_value;
 }
 
@@ -448,7 +488,7 @@ int send_message(int sd, ChordMessage *message) {
 		do_callback(&resp_mess);
 		
 	} else if(sd == -2) {
-		handle_message(sd, message);
+		//TODO
 	} else {
 		// Pack and send message
 		int64_t len = chord_message__get_packed_size(message);
@@ -561,7 +601,7 @@ int send_get_successor_list_request(int sd) {
 
 	message.has_query_id = true;
 	message.query_id = query_id;
-	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST;
+	message.msg_case = CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST;
 	message.get_successor_list_request = &req;
 
 	return send_message(sd, &message);
@@ -1106,8 +1146,7 @@ void callback_join(Node *node, int arg) {
  * @return 1, could be made void
  */
 int stabilize_get_predecessor(Node *successor_predecessor) {
-	if(successor_predecessor->port != 0 
-		&& in_mod_range(successor_predecessor->key, n.key, successors[0]->key)) {
+	if(successor_predecessor->key > n.key && successor_predecessor->key < successors[0]->key) {
 		int sd = add_socket(successor_predecessor);
 		if(send_get_successor_list_request(sd) == -1) {		// this request failed
 			increment_failed();
@@ -1282,7 +1321,6 @@ int add_socket(Node *n_prime) {
 	addr.sin_port = (unsigned short) n_prime->port;
 	addr.sin_addr.s_addr = n_prime->address;
 
-	
 	int new_sock;
 	int sd = get_socket(n_prime);
 	if(sd != -1) {
@@ -1458,51 +1496,6 @@ Node *find_node(int sd) {
 
 	// successor not found
 	return NULL;
-}
-
-int handle_message(int sd, ChordMessage *message) {
-	if(message == NULL) { return -1; }
-	// Decide what to do based on message case
-	switch(message->msg_case) {
-		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
-			send_notify_response_socket(sd, message);
-			break;
-		case CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ: ;
-			receive_successor_request(sd, message);
-			break;
-		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST: ;
-			send_get_predecessor_response_socket(sd, message->query_id);
-			break;
-		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST: ;
-			send_check_predecessor_response_socket(sd, message->query_id);
-			break;
-		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST: ;
-			send_get_successor_list_response(sd, message->query_id);
-			break;
-		// Deal with responses
-		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: 
-			receive_successor_response(sd, message);
-			break;
-		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: 
-			receive_check_predecessor_response();
-			break;
-		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE: 
-			receive_get_successor_list_response(sd, message);
-			break;
-		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE:
-			receive_get_predecessor_response(sd, message);
-			break;
-		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE: ;
-			//assert(message->msg_case == CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP);
-			//TODO we're not actually using the type of message in the responses, whoopss
-			assert(message->has_query_id);	
-			receive_notify_response(sd, message);
-			break;
-		default:
-			exit_error("The given message didn't have a valid request set\n");
-	}
-
-	return 0;
 }
 
 
