@@ -298,6 +298,7 @@ void receive_successor_request(int sd, ChordMessage *message) {
 	uint32_t query_id = message->query_id;
 	Node *original_node = message->r_find_succ_req->requester;
 
+	//TODO check more than just this successor
 	if(in_mod_range(id, n.key+1, successors[0]->key)) {
 		// if sd == -1, then we don't need to send anything
 		// because we're already at the endpoint
