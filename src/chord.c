@@ -203,6 +203,17 @@ void init_global(struct chord_arguments chord_args) {
 
 	LOG("This node: {%s}\n",display_node(&n));
 
+	// Initialize all the successors as nodes?
+	/*
+	for(int i = 0; i < num_successors; i++) {
+		
+		successors[i] = malloc(sizeof(Node));
+		node__init(successors[i]);
+		LOG("%p ",successors[i]);
+	}
+	LOG("\n");
+	*/
+
 	// initialize callback
 	InitDQ(callback_list, Callback);
 	assert(callback_list);
@@ -710,21 +721,30 @@ void send_check_predecessor_response_socket(int sd, uint32_t query_id) {
 void send_get_successor_list_response(int sd, uint32_t query_id) {
 	ChordMessage message;
 	GetSuccessorListResponse resp;
-	Node **temp_succ_list;
 	chord_message__init(&message);
 	get_successor_list_response__init(&resp);
 
-	resp.n_successors = num_successors;
-	temp_succ_list = (Node **) malloc(sizeof(Node) * num_successors);
-	memcpy(temp_succ_list, successors, sizeof(Node) * num_successors);
+	// Copy over the non-null successor entries into resp.successors
+	int num_non_null_successors = 0;
+	for(int i = 0; i < resp.n_successors; i++) {	
+		if(successors[i] != NULL) { num_non_null_successors++; }
+	}
 
-	resp.successors = temp_succ_list; // TODO: may not be correct
+	resp.n_successors = num_non_null_successors;
+	resp.successors = (Node **) malloc(sizeof(Node *) * num_non_null_successors);
+	int j = 0;
+	for(int i = 0; i < resp.n_successors; i++) {
+		if(successors[i] != NULL) {
+			resp.successors[j++] = successors[i];
+		}
+	}
 	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE;
 	message.get_successor_list_response = &resp;
 	message.has_query_id = true;
 	message.query_id = query_id;
 
 	send_message(sd, &message);
+	free(resp.successors);
 }
 
 /**
