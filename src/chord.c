@@ -17,7 +17,7 @@
 #include "hash.h"
 #include "queue.h"
 
-#define VERBOSE true
+#define VERBOSE false
 
 void LOG(const char *template, ...) {
   if (VERBOSE) { 
@@ -28,6 +28,7 @@ void LOG(const char *template, ...) {
   }
 }
 
+int next = 0;
 int num_clients;
 int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds[i] = 1 else fds[i] = 0
 
@@ -325,7 +326,6 @@ void receive_successor_request(int sd, ChordMessage *message) {
  */
 bool in_mod_range(uint64_t key, uint64_t a, uint64_t b) {
     uint64_t max_id = (uint64_t) -1;
-    printf("%lu",max_id);
 	if(a < b) {
 		return (a <= key && key <= b);
 	} else { // b < a
@@ -351,7 +351,7 @@ void receive_successor_response(int sd, ChordMessage *message) {
 
 void receive_check_predecessor_response() {
 	// if we have received then predecessor is alive, zero out timestamp
-	printf("balls");
+	// printf("balls");
 }
 
 void receive_get_predecessor_response(int sd, ChordMessage *message) {
@@ -1244,8 +1244,16 @@ int fix_fingers() {
 	// TODO Bobby said that we said that usually we pick only
 	// one at a time (randomly) to pick
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
-		send_find_successor_request(n.key + (((uint64_t)2) << (i-1)), CALLBACK_FIX_FINGERS, i); 
+		send_find_successor_request(n.key + (((uint64_t)1) << (i)), CALLBACK_FIX_FINGERS, i); 
 	}
+
+	// if(++next > NUM_BYTES_IDENTIFIER) {
+	// 	send_find_successor_request(n.key + (((uint64_t)1) << (next)), CALLBACK_FIX_FINGERS, next); 
+	// 	next = 0;
+	// }
+
+	
+
 	return 1;
 }
 
@@ -1315,32 +1323,15 @@ void check_periodic(int cpp, int ffp, int sp) {
 		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
 	}
 
-	// // successor failed/timed out for get predecessor
-	// if(successor_timeout(wait_get_predecessor, sp)) {
-	// 	int sd = get_socket(successors[failed_successors]);
-	// 	send_get_predecessor_request(sd);
-	// 	clock__gettime(CLOCK_REALTIME, &wait_get_predecessor);
-	// }
+	if(check_time(&last_check_predecessor, cpp) && !check_predecessor_ongoing) {
+		check_predecessor();
+		clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
+	}
 
-	// // successor failed/timed out for get successor list
-	// if(successor_timeout(wait_get_successor_list, sp)) {
-	// 	int sd = get_socket(successors[failed_successors]);
-	// 	send_get_predecessor_request(sd);
-	// 	clock__gettime(CLOCK_REALTIME, &wait_get_successor_list);
-	// }
-	
-
-	// if(check_time(&last_check_predecessor, cpp) && !check_predecessor_ongoing) {
-	// 	check_predecessor_ongoing = 1;
-	// 	check_predecessor();
-	// 	clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
-	// }
-
-	// if(check_time(&last_fix_fingers, ffp) && !fix_fingers_ongoing) {
-	// 	fix_fingers_ongoing = 1;
-	// 	fix_fingers();
-	// 	clock_gettime(CLOCK_REALTIME, &last_fix_fingers); // should go into function above
-	// }
+	if(check_time(&last_fix_fingers, ffp) && !fix_fingers_ongoing) {
+		fix_fingers();
+		clock_gettime(CLOCK_REALTIME, &last_fix_fingers); // should go into function above
+	}
 }
 
 // return 1 if successor has timed out, 0 otherwise
