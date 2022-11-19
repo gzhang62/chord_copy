@@ -1347,6 +1347,8 @@ int get_socket(Node *node) {
 	for(int i = 0; i < MAX_CLIENTS; i++) {
 		if(clients[i] != 0) {
 			len = sizeof(sd_address);
+			// I apologize for this horrendous hack. -Adam
+			
 			// Use getsockname to find the address, compare to node_address
 			getpeername(clients[i], (struct sockaddr *) &sd_address, &len);
 			//LOG("clients[%d] = %d: {%s}\n", i, clients[i], display_address(sd_address));
