@@ -1551,7 +1551,7 @@ void find_delete_node_socket(int sd) {
 		if(nprime->key== finger[i]->key) {
 			// key found set it to null and free it
 			free(finger[i]);
-			finger[i] == NULL;
+			finger[i] = NULL;
 		}
 	}
 
@@ -1559,10 +1559,10 @@ void find_delete_node_socket(int sd) {
 		if(nprime->key== successors[i]->key) {
 			// key found set it to null and free it
 			free(successors[i]);
-			successors[i] == NULL;
+			successors[i] = NULL;
 		}
 	}
-	delete_socket(sd);
+	delete_socket(nprime);
 }
 
 

@@ -47,7 +47,6 @@ Node *finger[NUM_BYTES_IDENTIFIER];
 struct timespec last_check_predecessor;
 struct timespec last_fix_fingers;
 struct timespec last_stabilize;
-struct timespec stabilize_ongoing;
 
 bool stabilize_ongoing = false;
 bool check_predecessor_ongoing = false;
@@ -182,6 +181,7 @@ int delete_socket(Node *nprime);
 
 int add_socket_to_array(int sd);
 int delete_socket_from_array(int sd);
+void find_delete_node_socket(int sd);
 
 Node *find_node(int sd);
 
