@@ -219,6 +219,7 @@ int read_process_node(int sd)	{
 
 	LOG("Receive message from %d:\n",sd);
 	ChordMessage *message = receive_message(sd);
+	if(message == NULL) { return -1; }
 	// Decide what to do based on message case
 	switch(message->msg_case) {
 		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
@@ -518,8 +519,15 @@ ChordMessage *receive_message(int sd) {
 	uint64_t message_size;
 	amount_read = read(sd, &message_size, sizeof(message_size));
 	LOG("Received %d, expected %ld\n",amount_read, sizeof(message_size));
+	if(amount_read == 0) {
+		// "If no messages are available to be received and the peer has performed an orderly shutdown, 
+		//recv() shall return 0"
+		close(sd);
+		delete_socket_from_array(sd);
+		return NULL;
+	}
 	assert((unsigned long) amount_read == sizeof(message_size));
-	// Fix endianness
+	// Fix endianness	
 	message_size = be64toh(message_size);
 	
 	// Read actual message
@@ -527,6 +535,11 @@ ChordMessage *receive_message(int sd) {
 	amount_read = read(sd, buffer, message_size);
 	LOG("Received %d, expected %ld\n",amount_read, message_size);
 	assert((unsigned long) amount_read == message_size);
+	if(amount_read == 0) { 
+		close(sd); 
+		delete_socket_from_array(sd);
+		return NULL; 
+	}
 
 	// Unpack message
 	ChordMessage *message = chord_message__unpack(NULL, message_size, buffer);
@@ -912,8 +925,12 @@ uint64_t get_node_hash(Node *n) {
 
 //TODO
 uint64_t get_hash(char *buffer) {
-	UNUSED(buffer);
-	return -1;
+	uint8_t *hash = malloc(20);
+	sha1sum_reset(ctx);
+	sha1sum_finish(ctx, (const uint8_t *) buffer, strlen(buffer)*sizeof(char), hash);
+	uint64_t ret = sha1sum_truncated_head(hash);
+	free(hash);
+	return ret;
 }
 
 //TODO
@@ -1009,7 +1026,8 @@ int handle_connection(int sd) {
 	struct sockaddr_in client_address;
 	socklen_t len = sizeof(client_address);
 	int client_fd = accept(sd, (struct sockaddr *)&client_address, &len);
-	LOG("handled connection: {%s}\n", display_address(client_address));
+	LOG("got %d/%d bytes -> socket %d, handled connection: {%s}\n", 
+		len, sizeof(client_address), client_fd, display_address(client_address));
 	return client_fd;
 }
 
@@ -1019,7 +1037,8 @@ int handle_connection(int sd) {
 
 /* The structure here is that the main functions (e.g. join()) are called,
  * which call some function which will eventually add to the callback array;
- * when we get a response, we get a response which 
+ * when we get a response, we look into the callback array to see what we should
+ * do with that data.
  */
 
 //TODO
@@ -1046,6 +1065,7 @@ int join(struct sockaddr_in join_addr) {
 	temp_succ->port = join_addr.sin_port;
 	temp_succ->key = get_node_hash(temp_succ);
 	//successors[0] = temp_succ;
+	LOG("temp_succ {%s}\n",display_node(temp_succ));
 	int new_sd = add_socket(temp_succ);
 	free(temp_succ);
 	send_find_successor_request_socket(new_sd, n.key + 1, CALLBACK_JOIN, 0);
@@ -1231,6 +1251,7 @@ int add_socket(Node *n_prime) {
 	struct sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
+	//LOG("Adding socket with port %d -> %d\n",n_prime->port, (unsigned short) n_prime->port);
 	addr.sin_port = (unsigned short) n_prime->port;
 	addr.sin_addr.s_addr = n_prime->address;
 
@@ -1294,7 +1315,6 @@ int delete_socket(Node *n_prime) {
 	}
 }
 
-// TODO the below function won't work because add_socket and remove_socket don't interact with this table
 /**
  * Given the node (containing an address), iterate through clients
  * and look for a socket connected to that address. 
@@ -1316,7 +1336,7 @@ int get_socket(Node *node) {
 	node_address.sin_addr.s_addr = node->address;
 	node_address.sin_port = node->port;
 
-	//LOG("given: %s", inet_ntoa(node_address.sin_addr));
+	LOG("given: {%s}\n", display_address(node_address));
 
 	// Set up structures for iteration below
 	struct sockaddr_in sd_address;
@@ -1328,15 +1348,25 @@ int get_socket(Node *node) {
 		if(clients[i] != 0) {
 			len = sizeof(sd_address);
 			// Use getsockname to find the address, compare to node_address
-			getsockname(clients[i], (struct sockaddr *) &sd_address, &len);
-			//printf("clients[%d] = %d: %s", i, clients[i], inet_ntoa(sd_address.sin_addr));
+			getpeername(clients[i], (struct sockaddr *) &sd_address, &len);
+			//LOG("clients[%d] = %d: {%s}\n", i, clients[i], display_address(sd_address));
 			if((sd_address.sin_addr.s_addr == node_address.sin_addr.s_addr) &&
 			(sd_address.sin_port == node_address.sin_port)) {
+				//LOG("---\n");
+				return clients[i];
+			}
+
+			getsockname(clients[i], (struct sockaddr *) &sd_address, &len);
+			//LOG("clients[%d] = %d: {%s}\n", i, clients[i], display_address(sd_address));
+			if((sd_address.sin_addr.s_addr == node_address.sin_addr.s_addr) &&
+			(sd_address.sin_port == node_address.sin_port)) {
+				//LOG("---\n");
 				return clients[i];
 			}
 		}
 	}
 	// No matching socket found
+	LOG("---\n");
 	return -1;
 }
 
