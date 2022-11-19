@@ -83,6 +83,46 @@ char *display_node(Node *node) {
 	return node_string_buffer;
 }
 
+
+char *display_msg_type(ChordMessage *message) {
+	if(message == NULL) { return "Null Message"; }
+	// Decide what to do based on message case
+	switch(message->msg_case) {
+		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
+			return "Notify Request";
+			break;
+		case CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ: ;
+			return "Find Successor Request";
+			break;
+		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST: ;
+			return "Get Predecessor Request";
+			break;
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_REQUEST: ;
+			return "Check Predecessor Request";
+			break;
+		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_REQUEST: ;
+			return "Get Successor List Request";
+			break;
+		// Deal with responses
+		case CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP: 
+			return "Find Successor Response";
+			break;
+		case CHORD_MESSAGE__MSG_CHECK_PREDECESSOR_RESPONSE: 
+			return "Check Predecessor Response";
+			break;
+		case CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE: 
+			return "Get Successor List Response";
+			break;
+		case CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE:
+			return "Get Predecessor Response";
+			break;
+		case CHORD_MESSAGE__MSG_NOTIFY_RESPONSE: ;
+			return "Notify Response";
+			break;
+		default:
+			return "Unknonw Message";
+	}
+}
 void printKey(uint64_t key) {
 	printf("%" PRIu64, key);
 }
@@ -458,6 +498,7 @@ int send_message(int sd, ChordMessage *message) {
 		// First send length...
 		int64_t belen = htobe64(len); 
 		amount_sent = send(sd, &belen, sizeof(len), 0);
+		LOG("Sending %s\n", display_msg_type(message));
 		LOG("Sent %d, tried to send %ld\n", amount_sent, sizeof(len));
 		if(amount_sent != sizeof(len)) { //node failure, probably?
 			LOG("socket %d failure in send_message\n",sd);
@@ -1076,10 +1117,10 @@ int join(struct sockaddr_in join_addr) {
 	temp_succ->address = join_addr.sin_addr.s_addr;
 	temp_succ->port = join_addr.sin_port;
 	temp_succ->key = get_node_hash(temp_succ);
-	//successors[0] = temp_succ;
+	successors[0] = temp_succ;
 	LOG("temp_succ {%s}\n",display_node(temp_succ));
 	int new_sd = add_socket(temp_succ);
-	free(temp_succ);
+	// free(temp_succ);
 	send_find_successor_request_socket(new_sd, n.key + 1, CALLBACK_JOIN, 0);
 	// TODO: modify to find successor list vs first successor
 	return -1;
@@ -1090,13 +1131,21 @@ void callback_join(Node *node, int arg) {
 	//TODO Which successor?
 	// Make a new value if it doesn't yet exist
 	// and copy over the value
-	if(successors[arg] == NULL) {
-		successors[arg] = malloc(sizeof(Node));
-	}
-
-	memcpy(successors[arg], node, sizeof(Node));
 	if(arg < num_successors) {
-		send_find_successor_request(node->key, CALLBACK_JOIN, arg+1);
+		if(successors[arg] == NULL) {
+			successors[arg] = malloc(sizeof(Node));
+		} else {
+			int sd = get_socket(successors[arg]);
+			sd = delete_socket_from_array(sd);
+			if(sd == -1) {
+				LOG("socket not found in callback join");
+			}
+			close(sd);
+		}
+		memcpy(successors[arg], node, sizeof(Node));
+		add_socket(node);
+		LOG("succesors at %d changed to %s\n", arg, display_node(node));
+		// send_find_successor_request(node->key, CALLBACK_JOIN, arg+1);
 	}
 }
 
@@ -1109,11 +1158,11 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 	if(successor_predecessor->port != 0	// predecessor is not null
 		&& in_mod_range(successor_predecessor->key, n.key, successors[0]->key)) {
 		int sd = add_socket(successor_predecessor);
-		if(send_get_successor_list_request(sd) == -1) {		// this request failed
-			increment_failed();
-			sd = get_socket(successors[failed_successors]); // send the next socket that didn't fail
-			send_get_predecessor_request(sd);
-		}
+		// if(send_get_successor_list_request(sd) == -1) {		// this request failed
+		// 	increment_failed();
+		// 	sd = get_socket(successors[failed_successors]); // send the next socket that didn't fail
+		// 	send_get_predecessor_request(sd);
+		// }
 		successors[0] = successor_predecessor;
  	} 
 
@@ -1458,7 +1507,7 @@ Node *find_node(int sd) {
 }
 
 int handle_message(int sd, ChordMessage *message) {
-if(message == NULL) { return -1; }
+	if(message == NULL) { return -1; }
 	// Decide what to do based on message case
 	switch(message->msg_case) {
 		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
