@@ -223,7 +223,7 @@ int read_process_node(int sd)	{
 	// Decide what to do based on message case
 	switch(message->msg_case) {
 		case CHORD_MESSAGE__MSG_NOTIFY_REQUEST: ;
-			send_notify_response_socket(sd, message->query_id);
+			send_notify_response_socket(sd, message);
 			break;
 		case CHORD_MESSAGE__MSG_R_FIND_SUCC_REQ: ;
 			receive_successor_request(sd, message);
@@ -265,13 +265,17 @@ int read_process_node(int sd)	{
 }
 
 void receive_notify_response(int sd, ChordMessage *message) {
-	Node *node = message->notify_request->node;
-	if(predecessor == NULL || in_mod_range(node->key,predecessor->key+1,n.key-1)) {
-		if(predecessor == NULL) {
-			predecessor = malloc(sizeof(Node));
-		}
-		memcpy(predecessor,node,sizeof(Node));
-	}
+	// Node *node = find_node(sd);
+	// if(node == NULL) {
+	// 	return;
+	// }
+	
+	// if(predecessor == NULL || in_mod_range(node->key,predecessor->key+1,n.key-1)) {
+	// 	if(predecessor == NULL) {
+	// 		predecessor = malloc(sizeof(Node));
+	// 	}
+	// 	memcpy(predecessor,node,sizeof(Node));
+	// }
 }
 
 /** 
@@ -700,7 +704,17 @@ void connect_send_find_successor_response(ChordMessage *message_in) {
  * Send an (empty) response to the socket from which we got the
  * notify (with the given query id).
  */
-int send_notify_response_socket(int sd, uint32_t query_id) {
+int send_notify_response_socket(int sd, ChordMessage *req_mess) {
+	// add requesting node to predecessor if it fits in range
+	Node *node = req_mess->notify_request->node;
+	
+	if(predecessor == NULL || in_mod_range(node->key,predecessor->key+1,n.key-1)) {
+		if(predecessor == NULL) {
+			predecessor = malloc(sizeof(Node));
+		}
+		memcpy(predecessor,node,sizeof(Node));
+	}
+
 	ChordMessage message;
 	NotifyResponse response;
 	chord_message__init(&message);
@@ -709,7 +723,7 @@ int send_notify_response_socket(int sd, uint32_t query_id) {
 	message.msg_case = CHORD_MESSAGE__MSG_NOTIFY_RESPONSE;
 	message.notify_response = &response;
 	message.has_query_id = true;
-	message.query_id = query_id;
+	message.query_id = req_mess->query_id;
 
 	return send_message(sd, &message);
 }
@@ -893,8 +907,11 @@ int read_process_input(FILE *fd) {
 			} else {
 				ret = print_state();
 			}
+		} else if(strcmp(command, "Print") == 0){ // TODO: temp
+			ret = print_predecessor();
 		} else { // wrong command
-			perror("Wrong command entered\n"); ret = -1;
+			perror("Wrong command entered\n");
+			ret = -1;
 		}
 	}
 	free(input);
@@ -968,6 +985,12 @@ int print_state() {
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
 		printf("< Finger [%d] %s\n", i+1, display_node(finger[i]));
 	}
+	return 0;
+}
+
+// TODO: temp
+int print_predecessor() {
+	printf("\nPredecessor: %s\n", display_node(predecessor));
 	return 0;
 }
 
@@ -1137,7 +1160,7 @@ int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors) {
 	// fix successor list
 	memcpy(successors + 1, successors_list, sizeof(successors[0]) * min(n_successors, num_successors));
 	// send notify
-	return send_notify_request(&n);
+	return 0;
 }
 
 int send_notify_request(Node *nprime) {
@@ -1450,6 +1473,25 @@ void increment_failed() {
 	if(failed_successors > num_successors) {
 		exit_error("All consecutive nodes have failed");
 	}
+}
+
+Node *find_node(int sd) {
+	struct sockaddr_in sd_address;
+	memset(&sd_address, 0, sizeof(sd_address));
+	socklen_t len = sizeof(sd_address);
+	getpeername(sd, (struct sockaddr *) &sd_address, &len);
+	
+	// try and find node in successors
+	for(int i = 0; i < num_successors; i++) {
+		if(successors[i]->address == sd_address.sin_addr.s_addr && 
+			successors[i]->port == sd_address.sin_port) {
+				return successors[i];
+			}
+	}
+
+
+	// successor not found
+	return NULL;
 }
 
 
