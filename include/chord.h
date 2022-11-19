@@ -141,6 +141,7 @@ int send_get_predecessor_response_socket(int sd, uint32_t query_id);
 void send_check_predecessor_response_socket(int sd, uint32_t query_id);
 int send_notify_request(Node *nprime);
 
+int handle_message(int sd, ChordMessage *message);
 
 ChordMessage *smessage(int sd);
 
