@@ -17,7 +17,7 @@
 #include "hash.h"
 #include "queue.h"
 
-#define VERBOSE false
+#define VERBOSE true
 
 void LOG(const char *template, ...) {
   if (VERBOSE) { 
@@ -476,28 +476,7 @@ int send_message(int sd, ChordMessage *message) {
 	//message->version = 417;
 
 	if(sd == -1) {
-		// find succ has looped on itself, construct a chord response
-		// Construct response
-		ChordMessage resp_mess;
-		RFindSuccResp resp;
-		Node succ;
-		chord_message__init(&resp_mess);
-		r_find_succ_resp__init(&resp);
-		node__init(&succ);
-		// TODO do we need to free these? 
-		// set node
-		succ.key = n.key;
-		succ.address = n.address;
-		succ.port = n.port;
-		// resp.key = message;
-		resp.node = &succ;
-
-		resp_mess.msg_case = CHORD_MESSAGE__MSG_R_FIND_SUCC_RESP;
-		resp_mess.r_find_succ_resp = &resp;
-		resp_mess.has_query_id = true;
-		resp_mess.query_id = message->query_id;
-		do_callback(&resp_mess);
-		
+		return -1;
 	} else if(sd == -2) {
 		handle_message(sd, message);
 	} else {
@@ -512,6 +491,7 @@ int send_message(int sd, ChordMessage *message) {
 		//LOG("Sent %d, tried to send %ld\n", amount_sent, sizeof(len));
 		if(amount_sent != sizeof(len)) { //node failure, probably?
 			LOG("socket %d failure in send_message\n",sd);
+			find_delete_node_socket(sd);
 			ret_val = -1;
 		} else {
 			// ...then send the actual message
@@ -519,6 +499,7 @@ int send_message(int sd, ChordMessage *message) {
 			//LOG("Sent %d, tried to send %ld\n", amount_sent, len);
 			if(amount_sent != len) {
 				LOG("socket %d failure in send_message\n",sd);
+				find_delete_node_socket(sd);
 				ret_val = -1;				
 			} else {
 				// LOG("Sent [socket %d]: ",sd);
@@ -549,11 +530,9 @@ ChordMessage *receive_message(int sd) {
 	if(amount_read == 0) {
 		// "If no messages are available to be received and the peer has performed an orderly shutdown, 
 		//recv() shall return 0"
-		close(sd);
-		delete_socket_from_array(sd);
+		find_delete_node_socket(sd);
 		return NULL;
 	}
-	assert((unsigned long) amount_read == sizeof(message_size));
 	// Fix endianness	
 	message_size = be64toh(message_size);
 	
@@ -561,10 +540,8 @@ ChordMessage *receive_message(int sd) {
 	void *buffer = malloc(message_size);
 	amount_read = read(sd, buffer, message_size);
 	//LOG("Received %d, expected %ld\n",amount_read, message_size);
-	assert((unsigned long) amount_read == message_size);
 	if(amount_read == 0) { 
-		close(sd); 
-		delete_socket_from_array(sd);
+		find_delete_node_socket(sd);
 		return NULL; 
 	}
 
@@ -1307,10 +1284,6 @@ int check_predecessor() {
  * @param sp timeout for stabilizes
  */
 void check_periodic(int cpp, int ffp, int sp) {
-	UNUSED(cpp);
-	UNUSED(ffp);
-	//UNUSED(sp);
-
 	// check timeout
 	if(check_time(&last_stabilize, sp) && !stabilize_ongoing) {
 		// stabilize_ongoing = 1;
@@ -1323,12 +1296,12 @@ void check_periodic(int cpp, int ffp, int sp) {
 		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
 	}
 
-	if(check_time(&last_check_predecessor, cpp) && !check_predecessor_ongoing) {
+	if(check_time(&last_check_predecessor, cpp)) {
 		check_predecessor();
 		clock_gettime(CLOCK_REALTIME, &last_check_predecessor); // should go into function above
 	}
 
-	if(check_time(&last_fix_fingers, ffp) && !fix_fingers_ongoing) {
+	if(check_time(&last_fix_fingers, ffp)) {
 		fix_fingers();
 		clock_gettime(CLOCK_REALTIME, &last_fix_fingers); // should go into function above
 	}
@@ -1576,6 +1549,32 @@ if(message == NULL) { return -1; }
 	}
 
 	return 0;
+}
+
+void find_delete_node_socket(int sd) {
+	Node *nprime = find_node(sd);
+
+	if(nprime->key == predecessor->key) {
+		free(predecessor);
+		predecessor = NULL;
+	}
+	// delete nprime from finger table
+	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
+		if(nprime->key== finger[i]->key) {
+			// key found set it to null and free it
+			free(finger[i]);
+			finger[i] = NULL;
+		}
+	}
+
+	for(int i = 0; i < num_successors; i++) {
+		if(nprime->key== successors[i]->key) {
+			// key found set it to null and free it
+			free(successors[i]);
+			successors[i] = NULL;
+		}
+	}
+	delete_socket(nprime);
 }
 
 

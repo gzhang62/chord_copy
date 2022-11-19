@@ -47,9 +47,10 @@ Node *finger[NUM_BYTES_IDENTIFIER];
 struct timespec last_check_predecessor;
 struct timespec last_fix_fingers;
 struct timespec last_stabilize;
-int stabilize_ongoing = 0;
-int check_predecessor_ongoing = 0;
-int fix_fingers_ongoing = 0;
+
+bool stabilize_ongoing = false;
+bool check_predecessor_ongoing = false;
+bool fix_fingers_ongoing = false;
 
 struct sha1sum_ctx *ctx;
 struct Callback *callback_list;
@@ -180,6 +181,7 @@ int delete_socket(Node *nprime);
 
 int add_socket_to_array(int sd);
 int delete_socket_from_array(int sd);
+void find_delete_node_socket(int sd);
 
 Node *find_node(int sd);
 
