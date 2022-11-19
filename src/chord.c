@@ -31,9 +31,11 @@ void LOG(const char *template, ...) {
 int num_clients;
 int clients[MAX_CLIENTS]; // keep track of fds, if fd is present in clients, fds[i] = 1 else fds[i] = 0
 
-char address_string_buffer[40]; // for displaying addresses
-char node_string_buffer[80]; 	// for displaying nodes
-static char *callback_name[] = {"NONE", "PRINT_LOOKUP", "JOIN", "FIX_FINGERS", "CALLBACK_STABILIZE_GET_PREDECESSOR", "CALLBACK_STABILIZE_GET_SUCCESSOR_LIST"};
+char address_string_buffer[40]; 		// for displaying addresses
+char node_string_buffer[80]; 			// for displaying nodes
+char callback_string_buffer[80];		// for displaying callbacks
+
+static char *callback_name[] = {"NONE", "PRINT_LOOKUP", "JOIN", "FIX_FINGERS", "STABILIZE_GET_PREDECESSOR", "STABILIZE_GET_SUCCESSOR_LIST"};
 
 // TODO constant saying how long TCP connection waits before giving up
 const int user_timeout = 5000;
@@ -57,6 +59,28 @@ int min(int a, int b) {
 }
 
 /**
+ * Store peer address associated with node in address_string_buffer and return its memory address.
+ */
+char *display_peer_address(int sd) {
+	struct sockaddr_in sd_address;
+	socklen_t len = sizeof(sd_address);
+	getpeername(sd, (struct sockaddr *) &sd_address, &len);
+	return display_address(sd_address);
+
+}
+
+/**
+ * Store socket address associated with node in address_string_buffer and return its memory address.
+ */
+char *display_socket_address(int sd) {
+	struct sockaddr_in sd_address;
+	socklen_t len = sizeof(sd_address);
+	getsockname(sd, (struct sockaddr *) &sd_address, &len);
+	return display_address(sd_address);
+}
+
+
+/**
  * Copy the address/port from the given node into the memory address
  * at the given sockaddr_in pointer.
  */
@@ -65,6 +89,15 @@ void node_to_address(Node *node, struct sockaddr_in *out_sockaddr) {
 	out_sockaddr->sin_family = AF_INET;
 	out_sockaddr->sin_addr.s_addr = node->address;
 	out_sockaddr->sin_port = node->port;
+}
+
+/**
+ * Store socket address associated with node in address_string_buffer and return its memory address.
+ */
+char *display_callback(CallbackFunction func, int arg) {
+	char *callback_func_name = (func < sizeof(callback_name) ? callback_name[func] : "<error>");
+	sprintf(callback_string_buffer, "%s(%d)", callback_func_name, arg);
+	return callback_string_buffer;
 }
 
 /**
@@ -228,7 +261,10 @@ void init_global(struct chord_arguments chord_args) {
 int read_process_node(int sd)	{
 	int return_value = -1;
 
-	LOG("Receive message from %d:\n",sd);
+	LOG("Receive [socket %d]: ",sd);
+	LOG("%s -> ", display_peer_address(sd));
+	LOG("%s\n", display_socket_address(sd));
+
 	ChordMessage *message = receive_message(sd);
 	return_value = handle_message(sd, message);
 	chord_message__free_unpacked(message,NULL);
@@ -317,6 +353,7 @@ void receive_check_predecessor_response() {
 }
 
 void receive_get_predecessor_response(int sd, ChordMessage *message) {
+	UNUSED(sd);
 	assert(message->msg_case == CHORD_MESSAGE__MSG_GET_PREDECESSOR_RESPONSE);
 	assert(message->has_query_id);
 
@@ -469,19 +506,21 @@ int send_message(int sd, ChordMessage *message) {
 		// First send length...
 		int64_t belen = htobe64(len); 
 		amount_sent = send(sd, &belen, sizeof(len), 0);
-		LOG("Sent %d, tried to send %ld\n", amount_sent, sizeof(len));
+		//LOG("Sent %d, tried to send %ld\n", amount_sent, sizeof(len));
 		if(amount_sent != sizeof(len)) { //node failure, probably?
 			LOG("socket %d failure in send_message\n",sd);
 			ret_val = -1;
 		} else {
 			// ...then send the actual message
 			amount_sent = send(sd, buffer, len, 0);
-			LOG("Sent %d, tried to send %ld\n", amount_sent, len);
+			//LOG("Sent %d, tried to send %ld\n", amount_sent, len);
 			if(amount_sent != len) {
 				LOG("socket %d failure in send_message\n",sd);
 				ret_val = -1;				
 			} else {
-				LOG("Sent message [socket %d] \n",sd);
+				LOG("Sent [socket %d]: ",sd);
+				LOG("%s -> ", display_socket_address(sd));
+				LOG("%s\n", display_peer_address(sd));
 				ret_val = 0;
 			}
 		}	
@@ -503,7 +542,7 @@ ChordMessage *receive_message(int sd) {
 	// Read size of message
 	uint64_t message_size;
 	amount_read = read(sd, &message_size, sizeof(message_size));
-	LOG("Received %d, expected %ld\n",amount_read, sizeof(message_size));
+	//LOG("Received %d, expected %ld\n",amount_read, sizeof(message_size));
 	if(amount_read == 0) {
 		// "If no messages are available to be received and the peer has performed an orderly shutdown, 
 		//recv() shall return 0"
@@ -518,7 +557,7 @@ ChordMessage *receive_message(int sd) {
 	// Read actual message
 	void *buffer = malloc(message_size);
 	amount_read = read(sd, buffer, message_size);
-	LOG("Received %d, expected %ld\n",amount_read, message_size);
+	//LOG("Received %d, expected %ld\n",amount_read, message_size);
 	assert((unsigned long) amount_read == message_size);
 	if(amount_read == 0) { 
 		close(sd); 
@@ -544,7 +583,7 @@ ChordMessage *receive_message(int sd) {
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
 	// TODO try other successors
 	int successor_sd = get_socket(successors[0]);
-	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %s(%d), to sd %d\n",id,callback_name[func],arg,successor_sd);
+	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %s, to sd %d\n", id, display_callback(func, arg));
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
 
@@ -560,6 +599,7 @@ int send_get_predecessor_request(int sd) {
 	message.msg_case = CHORD_MESSAGE__MSG_GET_PREDECESSOR_REQUEST;
 	message.get_predecessor_request = &req;
 
+	LOG("trying to send to socket %d\n",sd);
 	return send_message(sd, &message);
 }
 
@@ -633,7 +673,7 @@ void connect_send_find_successor_response(ChordMessage *message_in) {
 
 	// create new temp socket, or use the previous socket if it exists
 	int extant_socket = get_socket(original_node), original_sd;
-	bool socket_already_exists = (extant_socket != -1);
+	//bool socket_already_exists = (extant_socket != -1);
 	if(extant_socket != -1) {
 		original_sd = extant_socket;
 	} else {
@@ -725,19 +765,22 @@ void send_get_successor_list_response(int sd, uint32_t query_id) {
 	get_successor_list_response__init(&resp);
 
 	// Copy over the non-null successor entries into resp.successors
+	// Determine how many entries there are we can send
 	int num_non_null_successors = 0;
-	for(int i = 0; i < resp.n_successors; i++) {	
+	for(int i = 0; i < num_successors; i++) {	
 		if(successors[i] != NULL) { num_non_null_successors++; }
 	}
 
+	// Construct the successor list and copy over the non-NULL entries
 	resp.n_successors = num_non_null_successors;
 	resp.successors = (Node **) malloc(sizeof(Node *) * num_non_null_successors);
 	int j = 0;
-	for(int i = 0; i < resp.n_successors; i++) {
+	for(int i = 0; i < (int) resp.n_successors; i++) {
 		if(successors[i] != NULL) {
 			resp.successors[j++] = successors[i];
 		}
 	}
+
 	message.msg_case = CHORD_MESSAGE__MSG_GET_SUCCESSOR_LIST_RESPONSE;
 	message.get_successor_list_response = &resp;
 	message.has_query_id = true;
@@ -793,7 +836,7 @@ int add_callback(CallbackFunction func, int arg) {
 	cb_ptr->arg = arg;
 	cb_ptr->query_id = query_id;
 	InsertDQ(callback_list, cb_ptr);
-	LOG("add callback %s(%d) -> query_id %d\n", callback_name[func], arg, query_id);
+	LOG("add callback %s\n", display_callback(func, arg));
 	return query_id;
 }
 
@@ -811,8 +854,8 @@ int do_callback(ChordMessage *message) {
 		}
 	}
 	Node *node = message->r_find_succ_resp->node;
-	char *callback_func_name = (curr->func < sizeof(callback_name) ? callback_name[curr->func] : "<error>");
-	LOG("do callback %s(%d)\n",callback_func_name,curr->arg);
+	
+	LOG("do callback %s\n",display_callback(curr->func,curr->arg));
 	switch(curr->func) {
 		case CALLBACK_PRINT_LOOKUP: ;
 			callback_print_lookup(node);
@@ -959,7 +1002,9 @@ uint64_t get_hash(char *buffer) {
 	return ret;
 }
 
-//TODO
+/**
+ * Print state, according to project spec.
+ */
 int print_state() {
 	printf("< Self %s\n", display_node(&n));
 	//TODO should I start from zero or one?
@@ -1105,7 +1150,6 @@ int join(struct sockaddr_in join_addr) {
 	return -1;
 }
 
-
 void callback_join(Node *node, int arg) {
 	//TODO Which successor?
 	// Make a new value if it doesn't yet exist
@@ -1113,8 +1157,10 @@ void callback_join(Node *node, int arg) {
 	if(successors[arg] == NULL) {
 		successors[arg] = malloc(sizeof(Node));
 	}
-
 	memcpy(successors[arg], node, sizeof(Node));
+	LOG("JOIN callback set successors[%d] to %s",arg,display_node(successors[arg]));
+
+	// Send a request for the next node
 	if(arg < num_successors) {
 		send_find_successor_request(node->key, CALLBACK_JOIN, arg+1);
 	}
@@ -1213,7 +1259,6 @@ int check_predecessor() {
 		// construct and send a chec_predecessor message to predecessor
 		int sd = get_socket(predecessor);
 		assert(sd != -1); // TODO is there another case where this isn't so?
-		assert(sd != -1);
 		int query_id = rand();
 
 		// construct chord message check predecessor
@@ -1238,6 +1283,10 @@ int check_predecessor() {
  * @param sp timeout for stabilizes
  */
 void check_periodic(int cpp, int ffp, int sp) {
+	UNUSED(cpp);
+	UNUSED(ffp);
+	//UNUSED(sp);
+
 	// check timeout
 	if(check_time(&last_stabilize, sp) && !stabilize_ongoing) {
 		// stabilize_ongoing = 1;
@@ -1370,11 +1419,11 @@ int delete_socket(Node *n_prime) {
  * -2 if the node matches the current node, else return the socket descriptor.
  */
 int get_socket(Node *node) {
-	// TODO: is this node the current node?
-	// If so, return -2.
 	if(node == NULL) {
 		return -1;
 	}
+	// Is this node the current node?
+	// If so, return -2.
 	if((node->address == n.address) && (node->port == n.port)) {
 		return -2;
 	}
@@ -1386,7 +1435,7 @@ int get_socket(Node *node) {
 	node_address.sin_addr.s_addr = node->address;
 	node_address.sin_port = node->port;
 
-	LOG("given: {%s}\n", display_address(node_address));
+	//LOG("given: {%s}\n", display_address(node_address));
 
 	// Set up structures for iteration below
 	struct sockaddr_in sd_address;
@@ -1418,7 +1467,7 @@ int get_socket(Node *node) {
 		}
 	}
 	// No matching socket found
-	LOG("---\n");
+	//LOG("---\n");
 	return -1;
 }
 

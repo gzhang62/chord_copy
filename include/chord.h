@@ -85,8 +85,11 @@ typedef struct Callback {
 
 // Functions 
 char *display_address(struct sockaddr_in address);
+char *display_peer_address(int sd);
+char *display_socket_address(int sd);
 void node_to_address(Node *node, struct sockaddr_in *out_sockaddr);
 char *display_node(Node *node);
+char *display_callback(CallbackFunction func, int arg);
 int min(int a, int b);
 
 uint64_t get_node_hash(Node *nprime);
@@ -122,12 +125,13 @@ void callback_fix_fingers(Node *node, int arg);
 
 int check_predecessor();
 
-
 // Node interactions
 int read_process_node(int sd);                      // node fds
 int read_process_input(FILE *fd);                   // stdin fd
-int send_message(int sd, ChordMessage *message);    
+
 ChordMessage *receive_message(int sd);
+int handle_message(int sd, ChordMessage *message);
+int send_message(int sd, ChordMessage *message);    
 
 // message functions
 void send_find_successor_request_socket(int sd, uint64_t id, CallbackFunction func, int arg);
@@ -147,6 +151,7 @@ ChordMessage *smessage(int sd);
 int lookup(char *key);
 int print_state();
 int callback_print_lookup(Node *result);
+int print_predecessor(); // temporary
 
 // Other
 Node *copy_node(Node *nprime);
