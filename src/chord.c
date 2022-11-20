@@ -791,7 +791,7 @@ void send_get_successor_list_response(int sd, uint32_t query_id) {
 			resp.successors[j] = calloc(1, sizeof(Node));
 			node__init(resp.successors[j]);
 			resp.successors[j]->address = successors[i]->address;
-			resp.successors[j]->address = successors[i]->address;
+			resp.successors[j]->port = successors[i]->port;
 			resp.successors[j]->key = successors[i]->key;
 			j++;
 		}
@@ -1201,10 +1201,11 @@ void callback_join(Node *node, int arg) {
 int stabilize_get_predecessor(Node *successor_predecessor) {
 	if(successor_predecessor->port != 0	// predecessor is not null
 		&& (predecessor == NULL || in_mod_range(successor_predecessor->key, n.key + 1, successors[0]->key - 1))) {
-		int sd = add_socket(successor_predecessor);
-		send_get_successor_list_request(sd);	
 		successors[0] = successor_predecessor;
  	} 
+
+	int sd = add_socket(successors[0]);
+	send_get_successor_list_request(sd);	
 
 	send_notify_request(successors[0]);
 	return 1;
@@ -1212,7 +1213,10 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 
 int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors) {
 	// fix successor list
-	memcpy(successors + 1, successors_list, sizeof(successors[0]) * min(n_successors, num_successors));
+	for(int i = 0; i < num_successors-1; i++) {
+		free(successors[i+1]);
+		successors[i+1] = copy_node(successors_list[i]);
+	}
 	// send notify
 	return 0;
 }
