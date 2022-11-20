@@ -1247,10 +1247,8 @@ int fix_fingers() {
 	// Note: the first entry of the finger table is *the current node*
 	// TODO Bobby said that we said that usually we pick only
 	// one at a time (randomly) to pick
-
-	send_find_successor_request(n.key + (((uint64_t)1) << (next)), CALLBACK_FIX_FINGERS, next); 
-	if(++next > NUM_BYTES_IDENTIFIER - 1) {
-		next = 0;
+	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
+		send_find_successor_request(n.key + (((uint64_t)1) << (i)), CALLBACK_FIX_FINGERS, i); 
 	}
 
 	// if(++next > NUM_BYTES_IDENTIFIER) {
