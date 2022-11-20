@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	printf("> "); // indicate we're waiting for user input
-	fflush(stdin); 
+	fflush(stdout); 
 
 	for(;;) {
 		FD_ZERO(&readset);				// zero out readset
@@ -276,17 +276,8 @@ int read_process_node(int sd)	{
 }
 
 void receive_notify_response(int sd, ChordMessage *message) {
-	// Node *node = find_node(sd);
-	// if(node == NULL) {
-	// 	return;
-	// }
-	
-	// if(predecessor == NULL || in_mod_range(node->key,predecessor->key+1,n.key-1)) {
-	// 	if(predecessor == NULL) {
-	// 		predecessor = malloc(sizeof(Node));
-	// 	}
-	// 	memcpy(predecessor,node,sizeof(Node));
-	// }
+	UNUSED(sd);
+	UNUSED(message);
 }
 
 /** 
@@ -301,6 +292,8 @@ void receive_successor_request(int sd, ChordMessage *message) {
 	assert(message->has_query_id);
 	uint32_t query_id = message->query_id;
 	Node *original_node = message->r_find_succ_req->requester;
+	UNUSED(original_node);
+	UNUSED(query_id);
 
 	Node *non_failed_successor = get_non_failed_successor();
 	if(non_failed_successor == NULL) {
@@ -612,7 +605,6 @@ int send_get_predecessor_request(int sd) {
 }
 
 int send_get_successor_list_request(int sd) {
-	printf("send_get_successor_list_request\n");
 	int query_id = add_callback(CALLBACK_STABILIZE_GET_SUCCESSOR_LIST, 0);
 	ChordMessage message;
 	GetSuccessorListRequest req;
@@ -962,6 +954,8 @@ int read_process_input(FILE *fd) {
 			ret = -1;
 		}
 	}
+	printf(">");
+	fflush(stdout);
 	free(input);
 	return ret;
 }
@@ -993,8 +987,6 @@ int lookup(char *key) {
 int callback_print_lookup(Node *result) {
 	// Print results
 	printf("< %s\n", display_node(result));
-	printf("> "); // waiting for next user input
-	fflush(stdin); 
 	return 0;
 }
 
@@ -1213,6 +1205,7 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 
 int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors) {
 	// fix successor list
+	UNUSED(n_successors); // assumption that r is the same across nodes
 	for(int i = 0; i < num_successors-1; i++) {
 		free(successors[i+1]);
 		successors[i+1] = copy_node(successors_list[i]);
