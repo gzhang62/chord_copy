@@ -155,6 +155,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	printf("> "); // indicate we're waiting for user input
+	fflush(stdin); 
 
 	for(;;) {
 		FD_ZERO(&readset);				// zero out readset
@@ -982,6 +983,7 @@ int callback_print_lookup(Node *result) {
 	// Print results
 	printf("< %s\n", display_node(result));
 	printf("> "); // waiting for next user input
+	fflush(stdin); 
 	return 0;
 }
 
@@ -1001,7 +1003,10 @@ uint64_t get_node_hash(Node *n) {
 	return ret;
 }
 
-//TODO
+/**
+ * Return hash of given data.
+ * @author Adam
+ */
 uint64_t get_hash(char *buffer) {
 	uint8_t *hash = malloc(20);
 	sha1sum_reset(ctx);
@@ -1186,11 +1191,11 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 	if(successor_predecessor->port != 0	// predecessor is not null
 		&& (predecessor == NULL || in_mod_range(successor_predecessor->key, n.key + 1, successors[0]->key - 1))) {
 		int sd = add_socket(successor_predecessor);
-		// if(send_get_successor_list_request(sd) == -1) {		// this request failed
-		// 	increment_failed();
-		// 	sd = get_socket(successors[failed_successors]); // send the next socket that didn't fail
-		// 	send_get_predecessor_request(sd);
-		// }
+		if(send_get_successor_list_request(sd) == -1) {		// this request failed
+			increment_failed();
+			sd = get_socket(successors[failed_successors]); // send the next socket that didn't fail
+			send_get_predecessor_request(sd);
+		}
 
 		successors[0] = successor_predecessor;
  	} 
@@ -1275,7 +1280,7 @@ int check_predecessor() {
 	} else {
 		// construct and send a chec_predecessor message to predecessor
 		int sd = get_socket(predecessor);
-		if(sd != -1) { // TODO is there another case where this isn't so?
+		if(sd == -1) { // TODO is there another case where this isn't so?
 			delete_all_instances_of_node(predecessor);
 			return -1;
 		}	
@@ -1581,7 +1586,7 @@ void delete_all_instances_of_node(Node *nprime) {
 	}
 	// delete nprime from finger table
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
-		if(nprime->key== finger[i]->key) {
+		if(nprime->key == finger[i]->key) {
 			// key found set it to null and free it
 			free(finger[i]);
 			finger[i] = NULL;
