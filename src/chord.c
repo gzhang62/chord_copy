@@ -17,7 +17,7 @@
 #include "hash.h"
 #include "queue.h"
 
-#define VERBOSE false
+#define VERBOSE true
 
 void LOG(const char *template, ...) {
   if (VERBOSE) { 
@@ -488,7 +488,7 @@ int send_message(int sd, ChordMessage *message) {
 
 		// First send length...
 		int64_t belen = htobe64(len); 
-		amount_sent = send(sd, &belen, sizeof(len), 0);
+		amount_sent = send(sd, &belen, sizeof(len), MSG_NOSIGNAL);
 		//LOG("Sent %d, tried to send %ld\n", amount_sent, sizeof(len));
 		if(amount_sent != sizeof(len)) { //node failure, probably?
 			LOG("socket %d failure in send_message\n",sd);
@@ -496,7 +496,7 @@ int send_message(int sd, ChordMessage *message) {
 			ret_val = -1;
 		} else {
 			// ...then send the actual message
-			amount_sent = send(sd, buffer, len, 0);
+			amount_sent = send(sd, buffer, len, MSG_NOSIGNAL);
 			//LOG("Sent %d, tried to send %ld\n", amount_sent, len);
 			if(amount_sent != len) {
 				LOG("socket %d failure in send_message\n",sd);
@@ -541,7 +541,7 @@ ChordMessage *receive_message(int sd) {
 	void *buffer = malloc(message_size);
 	amount_read = read(sd, buffer, message_size);
 	//LOG("Received %d, expected %ld\n",amount_read, message_size);
-	if(amount_read == 0) { 
+	if(amount_read <= 0) { 
 		find_delete_node_socket(sd);
 		return NULL; 
 	}
@@ -1499,7 +1499,8 @@ Node *find_node(int sd) {
 	
 	// try and find node in successors
 	for(int i = 0; i < num_successors; i++) {
-		if(successors[i]->address == sd_address.sin_addr.s_addr && 
+		if(	successors[i] != NULL &&
+			successors[i]->address == sd_address.sin_addr.s_addr && 
 			successors[i]->port == sd_address.sin_port) {
 				return successors[i];
 			}
