@@ -1290,11 +1290,7 @@ void check_periodic(int cpp, int ffp, int sp) {
 	if(check_time(&last_stabilize, sp)) {
 		// stabilize_ongoing = 1;
 		int sd = get_socket(successors[0]); // TODO: may need to wait for timeouts here
-		while(send_get_predecessor_request(sd) == -1) { // initiate stabilize with get predecesso
-			// send failed retry with new sd
-			increment_failed();
-			sd = get_socket(successors[failed_successors]);
-		}
+		send_get_predecessor_request(sd);  // TODO: adapt to lsit
 		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
 	}
 
