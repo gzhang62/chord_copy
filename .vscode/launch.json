@@ -19,7 +19,7 @@
                     "--cpp",
                     "60",
                     "-r",
-                    "1"
+                    "2"
                 ],
                 "stopAtEntry": false,
                 "cwd": "${workspaceFolder}",

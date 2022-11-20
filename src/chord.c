@@ -606,10 +606,7 @@ int send_get_predecessor_request(int sd) {
 }
 
 int send_get_successor_list_request(int sd) {
-<<<<<<< HEAD
 	//printf("send_get_successor_list_request\n");
-=======
->>>>>>> 4d5726e72479dee03d1185a48aaecde2fed005d0
 	int query_id = add_callback(CALLBACK_STABILIZE_GET_SUCCESSOR_LIST, 0);
 	ChordMessage message;
 	GetSuccessorListRequest req;
@@ -1214,7 +1211,6 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 	return 1;
 }
 
-<<<<<<< HEAD
 int stabilize_get_successor_list(int sd, Node **successors_list, uint8_t n_successors) {
 	// The first entry should be the location from which this data came
 	if(sd < 0) { // if the sd points to, e.g. itself (sd == -2), we don't need to do anything
@@ -1226,11 +1222,6 @@ int stabilize_get_successor_list(int sd, Node **successors_list, uint8_t n_succe
 	free(successors[0]);
 	successors[0] = node_copy;
 	// The remaining entries should be taken from the successor list.
-=======
-int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors) {
-	// fix successor list
-	UNUSED(n_successors); // assumption that r is the same across nodes
->>>>>>> 4d5726e72479dee03d1185a48aaecde2fed005d0
 	for(int i = 0; i < num_successors-1; i++) {
 		free(successors[i+1]);
 		successors[i+1] = copy_node(successors_list[i]);
