@@ -118,7 +118,7 @@ int join(struct sockaddr_in join_addr);
 void callback_join(Node *node, int arg);
 
 int stabilize_get_predecessor();
-int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors);
+int stabilize_get_successor_list(int sd, Node **successors_list, uint8_t n_successors);
 
 int notify(Node *nprime);
 
