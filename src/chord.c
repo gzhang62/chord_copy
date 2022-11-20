@@ -346,8 +346,15 @@ Node *get_non_failed_successor() {
 			return successors[i];
 		}
 	}
-	// all of the successors are null; terminate
+	// all of the successors are null; send_successor through finger table
 	LOG("All of our successors have failed");
+	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
+		if(finger[i] != NULL) {
+			int sock = get_socket(finger[i]);
+			send_find_successor_request_socket(sock, n.key, CALLBACK_JOIN, 0);
+		}
+	}
+
 	return NULL;
 }
 
@@ -1306,7 +1313,7 @@ void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
 	if(check_time(&last_stabilize, sp)) {
 		// stabilize_ongoing = 1;
-		int sd = get_socket(successors[0]); // TODO: may need to wait for timeouts here
+		int sd = add_socket(successors[0]); // TODO: may need to wait for timeouts here
 		send_get_predecessor_request(sd);  // TODO: adapt to lsit
 		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
 	}
