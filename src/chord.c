@@ -155,6 +155,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	printf("> "); // indicate we're waiting for user input
+	fflush(stdin); 
 
 	for(;;) {
 		FD_ZERO(&readset);				// zero out readset
@@ -992,6 +993,7 @@ int callback_print_lookup(Node *result) {
 	// Print results
 	printf("< %s\n", display_node(result));
 	printf("> "); // waiting for next user input
+	fflush(stdin); 
 	return 0;
 }
 
@@ -1011,7 +1013,10 @@ uint64_t get_node_hash(Node *n) {
 	return ret;
 }
 
-//TODO
+/**
+ * Return hash of given data.
+ * @author Adam
+ */
 uint64_t get_hash(char *buffer) {
 	uint8_t *hash = malloc(20);
 	sha1sum_reset(ctx);

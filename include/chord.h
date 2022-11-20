@@ -1,7 +1,6 @@
 #include <inttypes.h>
 
 #include "chord.pb-c.h"
-#include "uthash.h"
 
 // Useful Macros
 
