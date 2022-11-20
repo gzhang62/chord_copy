@@ -349,13 +349,13 @@ Node *get_non_failed_successor() {
 	}
 	// all of the successors are null; send_successor through finger table
 	LOG("All of our successors have failed");
-	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
-		if(finger[i] != NULL) {
-			int sock = get_socket(finger[i]);
-			send_find_successor_request_socket(sock, n.key, CALLBACK_JOIN, 0);
-		}
-	}
-
+	// for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
+	// 	if(finger[i] != NULL) {
+	// 		int sock = get_socket(finger[i]);
+	// 		send_find_successor_request_socket(sock, n.key, CALLBACK_JOIN, 0);
+	// 	}
+	// }
+	exit_error("All of our successors have failed");
 	return NULL;
 }
 
@@ -609,6 +609,7 @@ int send_get_predecessor_request(int sd) {
 }
 
 int send_get_successor_list_request(int sd) {
+	printf("send_get_successor_list_request\n");
 	int query_id = add_callback(CALLBACK_STABILIZE_GET_SUCCESSOR_LIST, 0);
 	ChordMessage message;
 	GetSuccessorListRequest req;
@@ -1184,7 +1185,7 @@ void callback_join(Node *node, int arg) {
 	LOG("JOIN callback set successors[%d] to %s",arg,display_node(successors[arg]));
 
 	// Send a request for the next node
-	if(arg < num_successors) {
+	if(arg < num_successors - 1) {
 		send_find_successor_request(node->key, CALLBACK_JOIN, arg+1);
 	}
 }
@@ -1318,9 +1319,15 @@ void check_periodic(int cpp, int ffp, int sp) {
 	// check timeout
 	if(check_time(&last_stabilize, sp)) {
 		// stabilize_ongoing = 1;
-		int sd = add_socket(successors[0]); // TODO: may need to wait for timeouts here
-		send_get_predecessor_request(sd);  // TODO: adapt to lsit
-		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
+		Node *non_failed_successor = get_non_failed_successor();
+		if(non_failed_successor == NULL) {
+			exit_error("failed lol");
+		} else {
+			int sd = add_socket(non_failed_successor); // TODO: may need to wait for timeouts here
+			send_get_predecessor_request(sd);  // TODO: adapt to lsit
+			clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
+			
+		}
 	}
 
 	if(check_time(&last_check_predecessor, cpp)) {
@@ -1347,9 +1354,13 @@ int successor_timeout(struct timespec timer, int timeout) {
  * Add to global address to socket mapping
  * @author Gary
  * @param n_prime Node whose address we want to map to a socket
- * @return new socket or existing socket
+ * @return new socket or existing socket; -1 if input is null
  */
 int add_socket(Node *n_prime) {
+	if(n_prime == NULL) {
+		return -1;
+	}
+
 	// Construct address
 	struct sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
