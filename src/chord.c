@@ -17,7 +17,7 @@
 #include "hash.h"
 #include "queue.h"
 
-#define VERBOSE true
+#define VERBOSE false
 
 void LOG(const char *template, ...) {
   if (VERBOSE) { 
@@ -1184,7 +1184,7 @@ void callback_join(Node *node, int arg) {
  */
 int stabilize_get_predecessor(Node *successor_predecessor) {
 	if(successor_predecessor->port != 0	// predecessor is not null
-		&& in_mod_range(successor_predecessor->key, n.key + 1, successors[0]->key - 1)) {
+		&& (predecessor == NULL || in_mod_range(successor_predecessor->key, n.key + 1, successors[0]->key - 1))) {
 		int sd = add_socket(successor_predecessor);
 		// if(send_get_successor_list_request(sd) == -1) {		// this request failed
 		// 	increment_failed();
