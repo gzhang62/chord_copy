@@ -347,7 +347,7 @@ Node *get_non_failed_successor() {
 		}
 	}
 	// all of the successors are null; terminate
-	exit_error("All of our successors have failed");
+	LOG("All of our successors have failed");
 	return NULL;
 }
 
@@ -1275,7 +1275,7 @@ int check_predecessor() {
 	} else {
 		// construct and send a chec_predecessor message to predecessor
 		int sd = get_socket(predecessor);
-		if(sd != -1) { // TODO is there another case where this isn't so?
+		if(sd == -1) { // TODO is there another case where this isn't so?
 			delete_all_instances_of_node(predecessor);
 			return -1;
 		}	
@@ -1581,7 +1581,7 @@ void delete_all_instances_of_node(Node *nprime) {
 	}
 	// delete nprime from finger table
 	for(int i = 0; i < NUM_BYTES_IDENTIFIER; i++) {
-		if(nprime->key== finger[i]->key) {
+		if(finger[i] != NULL && nprime->key== finger[i]->key) {
 			// key found set it to null and free it
 			free(finger[i]);
 			finger[i] = NULL;
@@ -1589,7 +1589,7 @@ void delete_all_instances_of_node(Node *nprime) {
 	}
 
 	for(int i = 0; i < num_successors; i++) {
-		if(nprime->key== successors[i]->key) {
+		if(successors[i] != NULL && nprime->key == successors[i]->key) {
 			// key found set it to null and free it
 			free(successors[i]);
 			successors[i] = NULL;

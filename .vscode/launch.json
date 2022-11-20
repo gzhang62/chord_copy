@@ -160,5 +160,41 @@
                 "preLaunchTask": "Make a4",
                 "miDebuggerPath": "/usr/bin/gdb"
             },
+
+            {
+                "name": "Join Chord Node 3",
+                "type": "cppdbg",
+                "request": "launch",
+                "program": "${workspaceFolder}/chord",
+                "args": [
+                    "-p",
+                    "4173",
+                    "--ja",
+                    "172.17.0.2",
+                    "--jp",
+                    "4170",
+                    "--sp",
+                    "5",
+                    "--ffp",
+                    "5",
+                    "--cpp",
+                    "1",
+                    "-r",
+                    "1"
+                ],
+                "stopAtEntry": false,
+                "cwd": "${workspaceFolder}",
+                "environment": [],
+                "MIMode": "gdb",
+                "setupCommands": [
+                    {
+                        "description": "Enable pretty-printing for gdb",
+                        "text": "-enable-pretty-printing",
+                        "ignoreFailures": true
+                    }
+                ],
+                "preLaunchTask": "Make a4",
+                "miDebuggerPath": "/usr/bin/gdb"
+            },
         ]
     }
