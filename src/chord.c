@@ -301,7 +301,8 @@ void receive_successor_request(int sd, ChordMessage *message) {
 	uint32_t query_id = message->query_id;
 	Node *original_node = message->r_find_succ_req->requester;
 
-	if(in_mod_range(id, n.key+1, successors[0]->key)) {
+	Node *non_failed_successor = get_non_failed_successor();
+	if(in_mod_range(id, n.key+1, non_failed_successor->key)) {
 		// if sd == -1, then we don't need to send anything
 		// because we're already at the endpoint
 		if(sd == -1) {
@@ -333,6 +334,21 @@ bool in_mod_range(uint64_t key, uint64_t a, uint64_t b) {
 		//return (a <= key && key <= max_id) || (0 <= key && key <= b);
 		return (a <= key && key <= max_id) || (key <= b);
 	}
+}
+
+/**
+ * Return the first entry in successors which is not NULL.
+ * Terminate if all of the successors are NULL.
+*/
+Node *get_non_failed_successor() {
+	for(int i = 0; i < num_successors; i++) {
+		if(successors[i] != NULL) {
+			return successors[i];
+		}
+	}
+	// all of the successors are null; terminate
+	exit_error("All of our successors have failed");
+	return NULL;
 }
 
 /**
@@ -528,7 +544,7 @@ ChordMessage *receive_message(int sd) {
 	uint64_t message_size;
 	amount_read = read(sd, &message_size, sizeof(message_size));
 	//LOG("Received %d, expected %ld\n",amount_read, sizeof(message_size));
-	if(amount_read == 0) {
+	if(amount_read <= 0) {
 		// "If no messages are available to be received and the peer has performed an orderly shutdown, 
 		//recv() shall return 0"
 		find_delete_node_socket(sd);
@@ -776,7 +792,7 @@ void send_get_successor_list_response(int sd, uint32_t query_id) {
 
 	send_message(sd, &message);
 	// Free memory
-	for(int j = 0; j < resp.n_successors; j++) {
+	for(int j = 0; j < (int) resp.n_successors; j++) {
 		free(resp.successors[j]);
 	}
 	free(resp.successors);
@@ -868,7 +884,8 @@ int do_callback(ChordMessage *message) {
 			exit_error("Callback provided with unknown function enum");
 	}
 	
-	// TODO: Remove from callback array
+	// Remove from callback array
+	DelDQ(curr);
 	//callback_array[message->query_id];
 	return 0;
 }
@@ -1230,9 +1247,6 @@ int fix_fingers() {
 	// 	send_find_successor_request(n.key + (((uint64_t)1) << (next)), CALLBACK_FIX_FINGERS, next); 
 	// 	next = 0;
 	// }
-
-	
-
 	return 1;
 }
 
@@ -1261,7 +1275,10 @@ int check_predecessor() {
 	} else {
 		// construct and send a chec_predecessor message to predecessor
 		int sd = get_socket(predecessor);
-		assert(sd != -1); // TODO is there another case where this isn't so?
+		if(sd != -1) { // TODO is there another case where this isn't so?
+			delete_all_instances_of_node(predecessor);
+			return -1;
+		}	
 		int query_id = rand();
 
 		// construct chord message check predecessor
@@ -1550,9 +1567,8 @@ if(message == NULL) { return -1; }
 	return 0;
 }
 
-void find_delete_node_socket(int sd) {
-	Node *nprime = find_node(sd);
-
+/** Remove node from predecessor, finger, and successors. */
+void delete_all_instances_of_node(Node *nprime) {
 	if(nprime == NULL) {
 		return;
 	}
@@ -1579,7 +1595,17 @@ void find_delete_node_socket(int sd) {
 			successors[i] = NULL;
 		}
 	}
-	delete_socket(nprime);
 }
 
-
+/**
+ * Remove all instances of the node associated with the socket,
+ * close the socket, and remove it from the array.
+ * @author Gary
+ */
+void find_delete_node_socket(int sd) {
+	Node *nprime = find_node(sd);
+	delete_all_instances_of_node(nprime);
+	close(sd);
+	// remove from array
+	delete_socket_from_array(sd);
+}

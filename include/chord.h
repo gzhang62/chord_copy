@@ -91,7 +91,9 @@ char *display_socket_address(int sd);
 void node_to_address(Node *node, struct sockaddr_in *out_sockaddr);
 char *display_node(Node *node);
 char *display_callback(CallbackFunction func, int arg);
+
 int min(int a, int b);
+Node *get_non_failed_successor();
 
 uint64_t get_node_hash(Node *nprime);
 uint64_t get_hash(char *buffer);
@@ -178,6 +180,7 @@ int do_callback(ChordMessage *message);
 int add_socket(Node *nprime);
 int get_socket(Node *nprime);
 int delete_socket(Node *nprime);
+void delete_all_instances_of_node(Node *nprime);
 
 int add_socket_to_array(int sd);
 int delete_socket_from_array(int sd);
