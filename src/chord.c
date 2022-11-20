@@ -312,7 +312,8 @@ void receive_successor_request(int sd, ChordMessage *message) {
 		if(sd == -1) {
 			LOG("callback_print_lookup\n");
 			// TODO get first non-failed successor
-			callback_print_lookup(successors[0]);
+			Node *succ = get_non_failed_successor();
+			callback_print_lookup(succ);
 		} else {	
 			// Construct and send FindSuccessorResponse
 			//LOG("connect_send_find_successor_response(%d,%" PRIu32 ")\n",original_node->key,query_id);
@@ -403,7 +404,7 @@ void receive_get_successor_list_response(int sd, ChordMessage *message) {
 	Node **successors_list = message->get_successor_list_response->successors;
 
 	// replace current successor list with response
-	stabilize_get_successor_list(successors_list, successors_list_size);
+	stabilize_get_successor_list(sd, successors_list, successors_list_size);
 }
 
 /**
@@ -589,8 +590,8 @@ ChordMessage *receive_message(int sd) {
  * @param arg the argument for the callback function
  */
 void send_find_successor_request(uint64_t id, CallbackFunction func, int arg) {
-	// TODO try other successors
-	int successor_sd = get_socket(successors[0]);
+	Node *succ = get_non_failed_successor();
+	int successor_sd = get_socket(succ);
 	LOG("Send Find Succ Request, id: %" PRIu64 ", callback %s, to sd %d\n", id, display_callback(func, arg));
 	send_find_successor_request_socket(successor_sd, id, func, arg);
 }
@@ -612,7 +613,7 @@ int send_get_predecessor_request(int sd) {
 }
 
 int send_get_successor_list_request(int sd) {
-	printf("send_get_successor_list_request\n");
+	//printf("send_get_successor_list_request\n");
 	int query_id = add_callback(CALLBACK_STABILIZE_GET_SUCCESSOR_LIST, 0);
 	ChordMessage message;
 	GetSuccessorListRequest req;
@@ -700,9 +701,10 @@ void connect_send_find_successor_response(ChordMessage *message_in) {
 	node__init(&node);
 
 	// TODO use first non-failed successor  
-	node.address = successors[0]->address;
-	node.key = successors[0]->key;
-	node.port = successors[0]->port;
+	Node *succ = get_non_failed_successor();
+	node.address = succ->address;
+	node.key = succ->key;
+	node.port = succ->port;
 
 	response.node = &node;
 	response.key = id;
@@ -1199,10 +1201,15 @@ void callback_join(Node *node, int arg) {
  * @return 1, could be made void
  */
 int stabilize_get_predecessor(Node *successor_predecessor) {
+	// At this point, successors[0] should definitely exist, because we just set it in the previous function.
+	Node *succ = get_non_failed_successor();
 	if(successor_predecessor->port != 0	// predecessor is not null
-		&& (predecessor == NULL || in_mod_range(successor_predecessor->key, n.key + 1, successors[0]->key - 1))) {
+		&& (predecessor == NULL || in_mod_range(successor_predecessor->key, n.key + 1, succ->key - 1))) {
 		successors[0] = successor_predecessor;
- 	} 
+ 	} else {
+		//free(successors[0]);
+		successors[0] = copy_node(succ);
+	}
 
 	int sd = add_socket(successors[0]);
 	send_get_successor_list_request(sd);	
@@ -1211,8 +1218,17 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 	return 1;
 }
 
-int stabilize_get_successor_list(Node **successors_list, uint8_t n_successors) {
-	// fix successor list
+int stabilize_get_successor_list(int sd, Node **successors_list, uint8_t n_successors) {
+	// The first entry should be the location from which this data came
+	if(sd < 0) { // if the sd points to, e.g. itself (sd == -2), we don't need to do anything
+		return -1;
+	}
+
+	Node *node = find_node(sd);
+	Node *node_copy = copy_node(node);
+	free(successors[0]);
+	successors[0] = node_copy;
+	// The remaining entries should be taken from the successor list.
 	for(int i = 0; i < num_successors-1; i++) {
 		free(successors[i+1]);
 		successors[i+1] = copy_node(successors_list[i]);
