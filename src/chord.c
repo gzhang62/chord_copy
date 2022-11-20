@@ -303,6 +303,9 @@ void receive_successor_request(int sd, ChordMessage *message) {
 	Node *original_node = message->r_find_succ_req->requester;
 
 	Node *non_failed_successor = get_non_failed_successor();
+	if(non_failed_successor == NULL) {
+		return;
+	}
 	if(in_mod_range(id, n.key+1, non_failed_successor->key)) {
 		// if sd == -1, then we don't need to send anything
 		// because we're already at the endpoint
@@ -1199,12 +1202,7 @@ int stabilize_get_predecessor(Node *successor_predecessor) {
 	if(successor_predecessor->port != 0	// predecessor is not null
 		&& (predecessor == NULL || in_mod_range(successor_predecessor->key, n.key + 1, successors[0]->key - 1))) {
 		int sd = add_socket(successor_predecessor);
-		if(send_get_successor_list_request(sd) == -1) {		// this request failed
-			increment_failed();
-			sd = get_socket(successors[failed_successors]); // send the next socket that didn't fail
-			send_get_predecessor_request(sd);
-		}
-
+		send_get_successor_list_request(sd);	
 		successors[0] = successor_predecessor;
  	} 
 
@@ -1328,6 +1326,9 @@ void check_periodic(int cpp, int ffp, int sp) {
 			clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
 			
 		}
+		int sd = add_socket(successors[0]); // TODO: may need to wait for timeouts here
+		send_get_predecessor_request(sd);  // TODO: adapt to list
+		clock_gettime(CLOCK_REALTIME, &last_stabilize); // should go into function when stabilize completes
 	}
 
 	if(check_time(&last_check_predecessor, cpp)) {
