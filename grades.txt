@@ -1,0 +1,38 @@
+late submission - 0.75x multiplier
+Your code is segfaulting for tests 3, 4, and 6
+
+[GRADING DATA]
+	Assignment: Assignment 4 - Chord
+	Grading by TA: dkim8420
+	Due: Mon, 21 Nov 2022 00:00:59 -0500
+	Commit Hash: 21c329b5e771fcb13534ac280ba8373d0b4a7c0a
+
+	Passed: 0, 1, 2, 5
+	Failed: 3, 4, 6
+
+TOTAL: 70 * 0.75 = 52.5 / 100
+
+t0 : Check that a single node returns consistent responses -- PASSED [
+]
+
+t1 : Check that a ring of nodes all return consistent responses -- PASSED [
+]
+
+t2 : Check that the key placement is correct and that it moves upon node failure -- PASSED [
+]
+
+t3 : Check that the succ table is correct -- FAILED [
+	!!! Could not spawn controller, node likely crashed !!!
+]
+
+t4 : Try many random queries and check placement -- FAILED [
+	!!! Could not spawn controller, node likely crashed !!!
+]
+
+t5 : Check finger table is correct -- PASSED [
+]
+
+t6 : Check finger table is correct after node failures -- FAILED [
+	!!! Could not spawn controller, node likely crashed !!!
+]
+
